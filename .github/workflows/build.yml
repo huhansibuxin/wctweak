@@ -34,14 +34,12 @@ jobs:
           set -o pipefail
           make package 2>&1 | tee build.log
 
-      - name: Commit build error log (on failure)
+      - name: Upload build log (on failure)
         if: failure()
-        run: |
-          git config user.email "ci@ci.local"
-          git config user.name "ci"
-          git add build.log
-          git commit -m "ci: build error log" || true
-          git push || true
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-error-log
+          path: build.log
 
       - name: Upload deb
         if: success()
