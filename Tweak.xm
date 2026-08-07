@@ -1,9 +1,13 @@
-/* Tweak.xm v9 —— 微信消息左滑手势（rootless / ElleKit）
+/* Tweak.xm v10 —— 微信消息左滑手势（rootless / ElleKit）
  *
- * v9 重大重构（基于 WeChatX-1.dylib 逆向结论）：
- *   ✅ 彻底改用 iOS 原生 UISwipeActionsConfiguration（自带跟手动画，零自定义手势，不再闪退）
- *   ✅ 左滑自己的消息 → 撤回：RevokeMsg:MsgWrap:Counter:revokeTicket:viewController:
- *   ✅ 左滑对方的消息 → 删除：DelMsg:MsgWrap:
+ * v10 重大修复（基于 WeChatX-1.dylib 逆向结论）：
+ *   v9 用的 iOS 原生 UISwipeActionsConfiguration 在微信 8.0.37 聊天页根本
+ *   不触发（tableView 不调用该 delegate 方法，或被微信手势拦截）→ 划不动。
+ *   WeChatX 同款做法：自己用 UISwipeGestureRecognizer（leftSwipe）装到聊天
+ *   UITableView 上，自己处理滑动，不依赖原生 swipe delegate。
+ *
+ *   ✅ 左滑自己的消息 → 确认后撤回：RevokeMsg:MsgWrap:Counter:revokeTicket:viewController:
+ *   ✅ 左滑对方的消息 → 确认后删除：DelMsg:MsgWrap:
  *   ✅ 消息对象从 cell.m_cellView.viewModel.msgWrap 取（v8 已验证链路）
  *   ✅ isOwn 用 KVC isSender（v8 已验证对方消息判定正确）
  *   ✅ 所有微信内部调用走 NSInvocation / KVC + @try，杜绝不安全 objc_msgSend 闪退
@@ -28,7 +32,7 @@ static void STLog(NSString *fmt, ...);  // 日志函数（定义在文件末尾�
 @interface STSettingsViewController : UITableViewController
 @end
 
-#pragma mark - 配置键（NSUserDefaults，仿 WeChatX 格式）
+#pragma mark - 配置键（NSUserDefaults）
 static NSString *kEnabled    = @"com.boss.swipetweak.enabled";     // 总开关
 static NSString *kDeleteLeft = @"com.boss.swipetweak.deleteLeft";  // 消息左滑删除
 static NSString *kRecallLeft = @"com.boss.swipetweak.recallLeft";  // 消息左滑撤回
@@ -43,15 +47,6 @@ static void STSetBool(NSString *key, BOOL val) {
 }
 
 #pragma mark - 安全提取消息对象（核心：不闪退）
-/// 从任意 view 向上找到 UITableViewCell
-static UITableViewCell *STCellFromView(UIView *view) {
-    UIView *v = view;
-    while (v && ![v isKindOfClass:[UITableViewCell class]]) {
-        v = v.superview;
-    }
-    return (UITableViewCell *)v;
-}
-
 /// 从 cell 钻取 MsgWrap：cell.m_cellView.viewModel.msgWrap / getMsgWrap
 static id STGetMsgWrapFromCell(UITableViewCell *cell) {
     if (!cell) return nil;
@@ -89,7 +84,7 @@ static BOOL STIsOwnMessage(id msgWrap) {
 }
 
 #pragma mark - 真实执行：删除 / 撤回（WeChatX 同款 API）
-/// 删除：WeChatX 逆向确认的真实选择器 DelMsg:MsgWrap:（两个参数，第一个通常也传 msgWrap）
+/// 删除：WeChatX 逆向确认的真实选择器 DelMsg:MsgWrap:（两个参数，第一参数也传 msgWrap）
 /// 兜底：旧版单参数 DelMsg:
 static void STDeleteMessage(id vc, id msgWrap) {
     if (!vc || !msgWrap) return;
@@ -154,63 +149,100 @@ static void STRecallMessage(id vc, id msgWrap) {
     }
 }
 
-#pragma mark - Hook：聊天页左滑（原生 trailing swipe = 左滑）
+#pragma mark - Hook：聊天页左滑（自定义 UISwipeGestureRecognizer，仿 WeChatX 的 leftSwipe）
 %hook BaseMsgContentViewController
 
-- (id)tableView:(UITableView *)tableView
-    trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
+- (void)viewDidLoad {
+    %orig;
+    [self st_installSwipeGesture];
+}
 
-    if (!STGetBool(kEnabled, YES)) {
-        return %orig;
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    [self st_installSwipeGesture];
+}
+
+%new
+- (void)st_installSwipeGesture {
+    if (objc_getAssociatedObject(self, "st_swipe_installed")) return;
+
+    UITableView *tv = nil;
+    @try { tv = [self valueForKey:@"tableView"]; } @catch (NSException *e) {}
+    if (!tv) {
+        @try { tv = [self valueForKey:@"m_tableView"]; } @catch (NSException *e) {}
+    }
+    if (!tv) {
+        // 退而求其次：遍历 subviews 找 UITableView
+        for (UIView *v in self.view.subviews) {
+            if ([v isKindOfClass:[UITableView class]]) { tv = (UITableView *)v; break; }
+        }
+    }
+    if (!tv) {
+        STLog(@"[swipe] 找不到 tableView，延迟到下次 viewDidAppear 再试");
+        return;
     }
 
-    // 取 cell → MsgWrap
-    UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
-    id msgWrap = STGetMsgWrapFromCell(cell);
-    if (!msgWrap) {
-        return %orig;
+    objc_setAssociatedObject(self, "st_swipe_installed", @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    UISwipeGestureRecognizer *sw = [[UISwipeGestureRecognizer alloc]
+        initWithTarget:self action:@selector(st_leftSwipe:)];
+    sw.direction = UISwipeGestureRecognizerDirectionLeft;
+    [tv addGestureRecognizer:sw];
+    STLog(@"[swipe] 已安装左滑手势 on tableView (class=%@)",
+          NSStringFromClass([tv class]));
+}
+
+%new
+- (void)st_leftSwipe:(UISwipeGestureRecognizer *)sw {
+    if (sw.state != UIGestureRecognizerStateRecognized) return;
+    if (!STGetBool(kEnabled, YES)) return;
+
+    UITableView *tv = nil;
+    @try { tv = [self valueForKey:@"tableView"]; } @catch (NSException *e) {}
+    if (!tv) {
+        @try { tv = [self valueForKey:@"m_tableView"]; } @catch (NSException *e) {}
+    }
+    if (!tv) return;
+
+    CGPoint p = [sw locationInView:tv];
+    NSIndexPath *ip = [tv indexPathForRowAtPoint:p];
+    if (!ip) { STLog(@"[swipe] 没命中 cell"); return; }
+    UITableViewCell *cell = [tv cellForRowAtIndexPath:ip];
+    if (!cell) return;
+
+    id mw = STGetMsgWrapFromCell(cell);
+    if (!mw) {
+        STLog(@"[swipe] 取不到 msgWrap (cell=%@)", NSStringFromClass([cell class]));
+        return;
     }
 
-    BOOL isOwn = STIsOwnMessage(msgWrap);
-    NSMutableArray *actions = [NSMutableArray array];
+    BOOL isOwn = STIsOwnMessage(mw);
+    STLog(@"[swipe] 左滑触发 isOwn=%d msgWrap=%@ cell=%@",
+          isOwn, NSStringFromClass([mw class]), NSStringFromClass([cell class]));
 
-    if (isOwn && STGetBool(kRecallLeft, YES)) {
-        // 自己的消息 → 撤回
-        UIContextualAction *recall = [UIContextualAction
-            contextualActionWithStyle:UIContextualActionStyleNormal
-            title:@"撤回"
-            handler:^(UIContextualAction *action, UIView *sourceView, void (^completion)(BOOL)) {
-                STLog(@"[action] 撤回自己消息, msgWrap=%@ class=%@", msgWrap, NSStringFromClass([msgWrap class]));
-                STRecallMessage(self, msgWrap);
-                STLog(@"[action] 撤回调用完成");
-                if (completion) completion(YES);
-            }];
-        recall.backgroundColor = [UIColor systemBlueColor];
-        [actions addObject:recall];
-    }
+    if (isOwn && !STGetBool(kRecallLeft, YES)) return;
+    if (!isOwn && !STGetBool(kDeleteLeft, YES)) return;
 
-    if (!isOwn && STGetBool(kDeleteLeft, YES)) {
-        // 对方的消息 → 删除
-        UIContextualAction *del = [UIContextualAction
-            contextualActionWithStyle:UIContextualActionStyleDestructive
-            title:@"删除"
-            handler:^(UIContextualAction *action, UIView *sourceView, void (^completion)(BOOL)) {
-                STLog(@"[action] 删除对方消息, msgWrap=%@ class=%@", msgWrap, NSStringFromClass([msgWrap class]));
-                STDeleteMessage(self, msgWrap);
-                STLog(@"[action] 删除调用完成");
-                if (completion) completion(YES);
-            }];
-        [actions addObject:del];
-    }
+    NSString *title = isOwn ? @"撤回消息" : @"删除消息";
+    NSString *actTitle = isOwn ? @"撤回" : @"删除";
 
-    if ([actions count] == 0) {
-        return %orig;
-    }
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:title message:nil
+        preferredStyle:UIAlertControllerStyleActionSheet];
 
-    UISwipeActionsConfiguration *config =
-        [UISwipeActionsConfiguration configurationWithActions:actions];
-    config.performsFirstActionWithFullSwipe = NO;  // 不允许整行滑完直接触发，避免误触
-    return config;
+    typeof(self) wself = self;
+    [alert addAction:[UIAlertAction
+        actionWithTitle:actTitle
+        style:UIAlertActionStyleDestructive
+        handler:^(UIAlertAction *a) {
+            STLog(@"[swipe] 用户确认 %@ msgWrap=%@", actTitle, NSStringFromClass([mw class]));
+            if (isOwn) STRecallMessage(wself, mw);
+            else       STDeleteMessage(wself, mw);
+        }]];
+    [alert addAction:[UIAlertAction
+        actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 %end
@@ -363,5 +395,5 @@ static void STLog(NSString *fmt, ...) {
 #pragma mark - 入口
 %ctor {
     STInitLog();
-    STLog(@"SwipeTweak v9 Loaded (reverse-engineered from WeChatX: DelMsg:/RevokeMsg:)");
+    STLog(@"SwipeTweak v10 Loaded (custom UISwipeGestureRecognizer, reverse-engineered from WeChatX)");
 }

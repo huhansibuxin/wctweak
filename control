@@ -1,6 +1,6 @@
 Package: com.boss.wechatswipetweak
 Name: WeChat Swipe Tweak
-Version: 1.0.9
+Version: 1.0.10
 Architecture: iphoneos-arm64
 Description: 微信消息左滑手势（rootless, ElleKit）：自己消息撤回、对方消息删除。设置页可开关。
 Maintainer: boss
