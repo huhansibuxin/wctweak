@@ -24,6 +24,11 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
+// 仅声明聊天页 VC 的父类层级，使 %hook 块内能使用 UIViewController 的 self 方法
+// （不引入任何微信私有方法签名，符合逆向研究用途）
+@interface BaseMsgContentViewController : UIViewController
+@end
+
 #pragma mark - 前向声明
 static void STLog(NSString *fmt, ...);  // 日志函数（定义在文件末尾，此处前向声明）
 @interface UIViewController (SwipeTweak)
