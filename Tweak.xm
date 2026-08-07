@@ -54,24 +54,78 @@ static void STSetBool(NSString *key, BOOL val) {
 }
 
 #pragma mark - 安全提取消息对象（核心：不闪退）
-/// 从 cell 钻取 MsgWrap：cell.m_cellView.viewModel.msgWrap / getMsgWrap
+/// 递归在对象 ivar 中查找类名含 MsgWrap / C2CMsgNode / MessageWrap 的对象。
+/// 只钻「可能承载消息」的容器类型（UIView / Model / ViewModel / CellView / Wrap / Node），
+/// 用 visited 防环 + depth 限制防卡死。按类名匹配，彻底摆脱硬编码字段名。
+static id STSearchMsgWrap(id obj, int depth, NSMutableSet *visited) {
+    if (!obj || depth > 5) return nil;
+    NSValue *key = [NSValue valueWithPointer:(__bridge void *)obj];
+    if ([visited containsObject:key]) return nil;
+    [visited addObject:key];
+
+    NSString *clsName = NSStringFromClass([obj class]);
+    if ([clsName containsString:@"MsgWrap"] ||
+        [clsName containsString:@"C2CMsgNode"] ||
+        [clsName containsString:@"MessageWrap"]) {
+        return obj;
+    }
+    if (depth >= 5) return nil;
+
+    Class cls = [obj class];
+    unsigned int count = 0;
+    Ivar *ivs = class_copyIvarList(cls, &count);
+    if (!ivs) return nil;
+    id result = nil;
+    for (unsigned i = 0; i < count; i++) {
+        const char *enc = ivar_getTypeEncoding(ivs[i]);
+        if (!enc || enc[0] != '@') continue;           // 仅处理对象类型 ivar
+        id val = object_getIvar(obj, ivs[i]);
+        if (!val) continue;
+        NSString *vcls = NSStringFromClass([val class]);
+        // 只在可能承载消息的容器类型里继续钻
+        if ([val isKindOfClass:[UIView class]] ||
+            [vcls containsString:@"Model"] ||
+            [vcls containsString:@"View"]  ||
+            [vcls containsString:@"Wrap"]  ||
+            [vcls containsString:@"Node"]) {
+            result = STSearchMsgWrap(val, depth + 1, visited);
+            if (result) break;
+        }
+    }
+    free(ivs);
+    return result;
+}
+
+/// 从 cell 钻取 MsgWrap：优先 ivar 递归搜索（按类名匹配，最稳），
+/// 失败再试已知 getter（getMsgWrap / msgWrap / m_cellView.viewModel...）兜底。
 static id STGetMsgWrapFromCell(UITableViewCell *cell) {
     if (!cell) return nil;
     @try {
-        // 1. m_cellView
+        NSMutableSet *visited = [NSMutableSet set];
+        id found = STSearchMsgWrap(cell, 0, visited);
+        if (found) {
+            STLog(@"[swipe] 命中 msgWrap=%@ (by ivar search)", NSStringFromClass([found class]));
+            return found;
+        }
+        // 兜底：显式试已知 getter 路径
         id cellView = [cell valueForKey:@"m_cellView"];
-        if (!cellView) return nil;
-        // 2. viewModel
-        id viewModel = [cellView valueForKey:@"viewModel"];
-        if (!viewModel) return nil;
-        // 3. 优先 getMsgWrap，其次 msgWrap 属性
-        SEL getSel = NSSelectorFromString(@"getMsgWrap");
-        if ([viewModel respondsToSelector:getSel]) {
-            id mw = [viewModel performSelector:getSel];
+        if (cellView) {
+            id vm = [cellView valueForKey:@"viewModel"];
+            if (vm) {
+                id mw = [vm valueForKey:@"msgWrap"];
+                if (mw) return mw;
+                SEL gs = NSSelectorFromString(@"getMsgWrap");
+                if ([vm respondsToSelector:gs]) {
+                    id mw2 = [vm performSelector:gs];
+                    if (mw2) return mw2;
+                }
+            }
+            id mw = [cellView valueForKey:@"msgWrap"];
             if (mw) return mw;
         }
-        id mw = [viewModel valueForKey:@"msgWrap"];
-        if (mw) return mw;
+        STLog(@"[swipe] 取不到 msgWrap, cell=%@ cellView=%@",
+              NSStringFromClass([cell class]),
+              NSStringFromClass([(id)[cell valueForKey:@"m_cellView"] class]));
         return nil;
     } @catch (NSException *e) {
         return nil;
@@ -402,5 +456,5 @@ static void STLog(NSString *fmt, ...) {
 #pragma mark - 入口
 %ctor {
     STInitLog();
-    STLog(@"SwipeTweak v10 Loaded (custom UISwipeGestureRecognizer, reverse-engineered from WeChatX)");
+    STLog(@"SwipeTweak v11 Loaded (ivar-search msgWrap, reverse-engineered from WeChatX)");
 }
