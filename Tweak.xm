@@ -1,4 +1,4 @@
-/* Tweak.xm v14 —— 微信消息左滑手势（rootless / ElleKit）
+/* Tweak.xm v15 —— 微信消息左滑手势（rootless / ElleKit）
  *
  * v10 重大修复（基于 WeChatX-1.dylib 逆向结论）：
  *   v9 用的 iOS 原生 UISwipeActionsConfiguration 在微信 8.0.37 聊天页根本
@@ -37,6 +37,9 @@ static void STLog(NSString *fmt, ...);  // 日志函数（定义在文件末尾�
 - (void)st_maybeAddSettingsButton;
 @end
 @interface STSettingsViewController : UITableViewController
+@end
+
+@interface ChatTableViewCell : UITableViewCell
 @end
 
 #pragma mark - 配置键（NSUserDefaults）
@@ -301,19 +304,59 @@ static void STDeleteMessage(id vc, id obj) {
 }
 
 /// 撤回：依次尝试多个候选撤回方法
+///  - 8.0.37: OnRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg: (取 MsgWrap，已 dump 确认存在)
+///            revokeMsgByNodeView: (取 cellView/nodeView，按方法名语义兜底)
 ///  - WeChatX: RevokeMsg:MsgWrap:Counter:revokeTicket:viewController:
-///  - 8.0.37: revokeMsgByNodeView: / onRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg: / OnRevokeMsg:...
-static void STRecallMessage(id vc, id obj) {
+static void STRecallMessage(id vc, id obj, id cellView) {
     if (!vc || !obj) return;
-    STLog(@"[recall] 尝试撤回 obj=%@ vc=%@", NSStringFromClass([obj class]), NSStringFromClass([vc class]));
+    STLog(@"[recall] 尝试撤回 obj=%@ vc=%@ cellView=%@",
+          NSStringFromClass([obj class]), NSStringFromClass([vc class]),
+          NSStringFromClass([cellView class]));
     @try {
-        // 1. RevokeMsg:MsgWrap:Counter:revokeTicket:viewController: (WeChatX, 4 参数)
-        SEL s1 = NSSelectorFromString(@"RevokeMsg:MsgWrap:Counter:revokeTicket:viewController:");
+        // 1. OnRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg: (8.0.37, 取 MsgWrap)
+        SEL s1 = NSSelectorFromString(@"OnRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg:");
         if ([vc respondsToSelector:s1]) {
             NSMethodSignature *sig = [vc methodSignatureForSelector:s1];
             if (sig) {
                 NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
                 [inv setTarget:vc]; [inv setSelector:s1];
+                [inv setArgument:&obj atIndex:2];
+                int rc = 0; [inv setArgument:&rc atIndex:3];
+                id rm = nil; [inv setArgument:&rm atIndex:4];
+                id em = nil; [inv setArgument:&em atIndex:5];
+                [inv invoke];
+                STLog(@"[recall] OnRevokeMsg:MsgWrap:... OK"); return;
+            }
+        }
+        // 2. onRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg: (小写变体)
+        SEL s1b = NSSelectorFromString(@"onRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg:");
+        if ([vc respondsToSelector:s1b]) {
+            NSMethodSignature *sig = [vc methodSignatureForSelector:s1b];
+            if (sig) {
+                NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+                [inv setTarget:vc]; [inv setSelector:s1b];
+                [inv setArgument:&obj atIndex:2];
+                int rc = 0; [inv setArgument:&rc atIndex:3];
+                id rm = nil; [inv setArgument:&rm atIndex:4];
+                id em = nil; [inv setArgument:&em atIndex:5];
+                [inv invoke];
+                STLog(@"[recall] onRevokeMsg:MsgWrap:... OK"); return;
+            }
+        }
+        // 3. revokeMsgByNodeView: (按方法名语义，传 cellView/nodeView 更合适)
+        SEL s2 = NSSelectorFromString(@"revokeMsgByNodeView:");
+        if ([vc respondsToSelector:s2]) {
+            id arg = (cellView ? cellView : obj);
+            [vc performSelector:s2 withObject:arg];
+            STLog(@"[recall] revokeMsgByNodeView: OK (arg=%@)", NSStringFromClass([arg class])); return;
+        }
+        // 4. WeChatX: RevokeMsg:MsgWrap:Counter:revokeTicket:viewController: (4 参数)
+        SEL s3 = NSSelectorFromString(@"RevokeMsg:MsgWrap:Counter:revokeTicket:viewController:");
+        if ([vc respondsToSelector:s3]) {
+            NSMethodSignature *sig = [vc methodSignatureForSelector:s3];
+            if (sig) {
+                NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+                [inv setTarget:vc]; [inv setSelector:s3];
                 [inv setArgument:&obj atIndex:2];
                 NSUInteger c = 0; [inv setArgument:&c atIndex:3];
                 id t = nil;    [inv setArgument:&t atIndex:4];
@@ -322,34 +365,12 @@ static void STRecallMessage(id vc, id obj) {
                 STLog(@"[recall] RevokeMsg:MsgWrap:... OK"); return;
             }
         }
-        // 2. revokeMsgByNodeView: (8.0.37, 1 参数 nodeView)
-        SEL s2 = NSSelectorFromString(@"revokeMsgByNodeView:");
-        if ([vc respondsToSelector:s2]) {
-            [vc performSelector:s2 withObject:obj];
-            STLog(@"[recall] revokeMsgByNodeView: OK"); return;
-        }
-        // 3. onRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg: 系列
-        for (NSString *n in @[
-                @"onRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg:",
-                @"OnRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg:",
-                @"onRevokeMsg:"]) {
+        // 5. 其余单参数候选
+        for (NSString *n in @[@"onRevokeMsg:", @"revokeMsg:"]) {
             SEL s = NSSelectorFromString(n);
             if ([vc respondsToSelector:s]) {
-                if ([n isEqualToString:@"onRevokeMsg:"]) {
-                    [vc performSelector:s withObject:obj];
-                    STLog(@"[recall] onRevokeMsg: OK"); return;
-                }
-                NSMethodSignature *sig = [vc methodSignatureForSelector:s];
-                if (sig) {
-                    NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
-                    [inv setTarget:vc]; [inv setSelector:s];
-                    [inv setArgument:&obj atIndex:2];
-                    int rc = 0; [inv setArgument:&rc atIndex:3];
-                    id rm = nil; [inv setArgument:&rm atIndex:4];
-                    id em = nil; [inv setArgument:&em atIndex:5];
-                    [inv invoke];
-                    STLog(@"[recall] %@ OK", n); return;
-                }
+                [vc performSelector:s withObject:obj];
+                STLog(@"[recall] %@ OK", n); return;
             }
         }
         STLog(@"[recall] 未找到撤回方法 on %@", NSStringFromClass([vc class]));
@@ -397,6 +418,16 @@ static void STRecallMessage(id vc, id obj) {
         initWithTarget:self action:@selector(st_leftSwipe:)];
     sw.direction = UISwipeGestureRecognizerDirectionLeft;
     [tv addGestureRecognizer:sw];
+
+    // v15：禁用 tableView 上微信额外的横向滑动 pan（其会与我们的左滑抢触摸 → 不稳定/自己的消息划不动）
+    // 注意：tv.panGestureRecognizer 是滚动用的，绝不能禁，否则列表无法滚动。
+    for (UIGestureRecognizer *g in tv.gestureRecognizers) {
+        if (g != tv.panGestureRecognizer && [g isKindOfClass:[UIPanGestureRecognizer class]]) {
+            [g setEnabled:NO];
+            STLog(@"[swipe] 禁用 tableView 额外 pan: %@", g);
+        }
+    }
+
     STLog(@"[swipe] 已安装左滑手势 on tableView (class=%@)",
           NSStringFromClass([tv class]));
 }
@@ -429,32 +460,80 @@ static void STRecallMessage(id vc, id obj) {
     }
 
     BOOL isOwn = STIsOwnMessage(mw);
-    STLog(@"[swipe] 左滑触发 isOwn=%d msgWrap=%@ cell=%@",
-          isOwn, NSStringFromClass([mw class]), NSStringFromClass([cell class]));
+    id cellView = nil;
+    @try { cellView = [cell valueForKey:@"m_cellView"]; } @catch (NSException *e) {}
+    STLog(@"[swipe] 左滑触发 isOwn=%d msgWrap=%@ cell=%@ cellView=%@",
+          isOwn, NSStringFromClass([mw class]), NSStringFromClass([cell class]),
+          NSStringFromClass([cellView class]));
 
-    if (isOwn && !STGetBool(kRecallLeft, YES)) return;
-    if (!isOwn && !STGetBool(kDeleteLeft, YES)) return;
-
-    NSString *title = isOwn ? @"撤回消息" : @"删除消息";
-    NSString *actTitle = isOwn ? @"撤回" : @"删除";
-
-    UIAlertController *alert = [UIAlertController
-        alertControllerWithTitle:title message:nil
-        preferredStyle:UIAlertControllerStyleActionSheet];
+    if (!STGetBool(kEnabled, YES)) return;
 
     typeof(self) wself = self;
-    [alert addAction:[UIAlertAction
-        actionWithTitle:actTitle
-        style:UIAlertActionStyleDestructive
-        handler:^(UIAlertAction *a) {
-            STLog(@"[swipe] 用户确认 %@ msgWrap=%@", actTitle, NSStringFromClass([mw class]));
-            if (isOwn) STRecallMessage(wself, mw);
-            else       STDeleteMessage(wself, mw);
-        }]];
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"消息操作" message:nil
+        preferredStyle:UIAlertControllerStyleActionSheet];
+
+    // 自己的消息：撤回 + 删除；对方消息：删除（顺带兜住 isOwn 万一判错的情况）
+    if (isOwn && STGetBool(kRecallLeft, YES)) {
+        [alert addAction:[UIAlertAction
+            actionWithTitle:@"撤回" style:UIAlertActionStyleDestructive
+            handler:^(UIAlertAction *a) {
+                STLog(@"[swipe] 用户确认 撤回 msgWrap=%@", NSStringFromClass([mw class]));
+                STRecallMessage(wself, mw, cellView);
+            }]];
+    }
+    if (STGetBool(kDeleteLeft, YES)) {
+        [alert addAction:[UIAlertAction
+            actionWithTitle:@"删除" style:UIAlertActionStyleDestructive
+            handler:^(UIAlertAction *a) {
+                STLog(@"[swipe] 用户确认 删除 msgWrap=%@", NSStringFromClass([mw class]));
+                STDeleteMessage(wself, mw);
+            }]];
+    }
+    if (alert.actions.count == 0) return;  // 开关全关
+
     [alert addAction:[UIAlertAction
         actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
 
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+%end
+
+#pragma mark - Hook：禁用微信原生 cell 左滑手势（与我们的左滑抢触摸 → 不稳定/自己的消息划不动）
+%hook ChatTableViewCell
+
+- (void)layoutSubviews {
+    %orig;
+    [self st_neutralizeNativeSwipe];
+}
+
+%new
+- (void)st_neutralizeNativeSwipe {
+    // 禁用 cell 自身及 m_cellView 上的 UIPanGestureRecognizer（微信原生左滑手势），
+    // 让 tableView 上的我们的 UISwipeGestureRecognizer 成为唯一左滑处理者。
+    // 不碰 UITapGestureRecognizer（长按菜单等），只禁 pan。
+    for (UIGestureRecognizer *g in self.gestureRecognizers) {
+        if ([g isKindOfClass:[UIPanGestureRecognizer class]] && [g isEnabled]) {
+            [g setEnabled:NO];
+        }
+    }
+    id cellView = nil;
+    @try { cellView = [self valueForKey:@"m_cellView"]; } @catch (NSException *e) {}
+    if (cellView) {
+        for (UIGestureRecognizer *g in [cellView gestureRecognizers]) {
+            if ([g isKindOfClass:[UIPanGestureRecognizer class]] && [g isEnabled]) {
+                [g setEnabled:NO];
+            }
+        }
+    }
+    // 仅首次打印诊断，便于确认到底禁了哪些手势（若仍冲突，说明微信用的是 touch 级而非 pan）
+    if (!objc_getAssociatedObject(self, "st_swipe_diag")) {
+        objc_setAssociatedObject(self, "st_swipe_diag", @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        STLog(@"[swipe] cell=%@ 手势: %@ ; cellView(%@) 手势: %@",
+              NSStringFromClass([self class]), self.gestureRecognizers,
+              NSStringFromClass([cellView class]), [cellView gestureRecognizers]);
+    }
 }
 
 %end
@@ -619,5 +698,5 @@ static void STLog(NSString *fmt, ...) {
 #pragma mark - 入口
 %ctor {
     STInitLog();
-    STLog(@"SwipeTweak v14 Loaded (linked CydiaSubstrate/ellekit like WeChatX, so TrollFools loads it)");
+    STLog(@"SwipeTweak v15 Loaded (禁用微信原生左滑 pan，让自定义左滑稳定触发)");
 }
