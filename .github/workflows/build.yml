@@ -29,22 +29,33 @@ jobs:
           mv sdks-master/iPhoneOS16.5.sdk .
           rm -rf sdks-master master.zip
 
-      - name: Fix CydiaSubstrate install name (-> @executable_path, 与 WeChatX 一致)
-        run: |
-          install_name_tool -id @executable_path/Frameworks/CydiaSubstrate.framework/CydiaSubstrate \
-            Frameworks/CydiaSubstrate.framework/CydiaSubstrate
-          echo "install name now:"; otool -D Frameworks/CydiaSubstrate.framework/CydiaSubstrate | tail -1
-
       - name: Build
         run: |
           set -o pipefail
           make package 2>&1 | tee build.log
 
-      - name: Upload build log (on failure)
-        if: failure()
+      - name: Fix dependency install name in built dylib (-> @executable_path, 与 WeChatX 一致)
+        # 从设备拉回的 CydiaSubstrate 二进制 LINKEDIT 无余量，install_name_tool 无法直接改它。
+        # 故改为在 make package 之后，对我们自己刚编译的 dylib（LINKEDIT 正常）改写其 LC_LOAD_DYLIB，
+        # 把 CydiaSubstrate 依赖指向 @executable_path/Frameworks/...，再重打包。
+        run: |
+          set -o pipefail
+          DYLIB=.theos/obj/wechat_swipe_tweak.dylib
+          FW=$(otool -D Frameworks/CydiaSubstrate.framework/CydiaSubstrate | tail -1)
+          echo "framework current install name: $FW"
+          echo "before:"; otool -L "$DYLIB" | grep -i cydiasubstrate || true
+          install_name_tool -change "$FW" @executable_path/Frameworks/CydiaSubstrate.framework/CydiaSubstrate "$DYLIB"
+          ldid -S "$DYLIB"
+          echo "after:"; otool -L "$DYLIB" | grep -i cydiasubstrate || true
+          # 删除旧的暂存/打包结果，保留已改的 .obj，让 theos 仅重打包（不重编译）
+          rm -rf .theos/_ packages/*.deb
+          make package 2>&1 | tee -a build.log
+
+      - name: Upload build log (always, for diagnostics)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-error-log
+          name: build-log
           path: build.log
 
       - name: Upload deb

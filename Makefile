@@ -16,9 +16,12 @@ TWEAK_NAME = wechat_swipe_tweak
 
 wechat_swipe_tweak_FILES = Tweak.xm
 wechat_swipe_tweak_CFLAGS = -fobjc-arc -w -F$(THEOS_PROJECT_DIR)/Frameworks
-# 关键：本设备 TrollFools 只加载“链接了 substrate”的 tweak。
-# 仿 WeChatX，链接设备自带的 CydiaSubstrate(=ellekit)，让 dylib 真正被加载。
-# 框架 install name 已在 CI 用 install_name_tool 改为 @executable_path/Frameworks/...
+# 关键：本设备 TrollFools 只加载“链接了 substrate(=ellekit)”的 tweak。
+# 仿 WeChatX，链接设备自带的 CydiaSubstrate.framework 让 dylib 真正被加载。
+# 注意：从设备拉回的 CydiaSubstrate 二进制 LINKEDIT 无余量，install_name_tool 无法改它的 id，
+# 故 CI 改为在 make package 之后对“我们自己刚编译的 dylib”做
+#   install_name_tool -change <原id> @executable_path/Frameworks/CydiaSubstrate.framework/CydiaSubstrate
+# 再重打包。这样运行时 loader 能在 app 的 Frameworks 里解析到 TrollFools 放的 ellekit。
 wechat_swipe_tweak_LDFLAGS = -F$(THEOS_PROJECT_DIR)/Frameworks -framework CydiaSubstrate
 wechat_swipe_tweak_FRAMEWORKS = UIKit
 
