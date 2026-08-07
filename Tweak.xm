@@ -116,48 +116,39 @@ static BOOL STInChat(UIView *view) {
 
 #pragma mark - 微信内部 API 调用（运行时探测）
 
-// 全量 dump cell 的 ivar 和 property（首次失败时调用，只打一次）
-static BOOL g_dumpedCellIvars = NO;
-static void STDumpCellIvars(UIView *cell) {
-    if (g_dumpedCellIvars) return;
-    g_dumpedCellIvars = YES;
-
-    Class cls = [cell class];
+// 全量 dump 任意对象的 ivar/property（每个类只打一次，避免刷屏）
+static NSMutableSet *g_dumpedClasses = nil;
+static void STDumpObject(NSObject *obj) {
+    if (!obj) return;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ g_dumpedClasses = [NSMutableSet set]; });
+    Class cls = [obj class];
+    NSString *key = [NSString stringWithUTF8String:class_getName(cls)];
+    @synchronized(g_dumpedClasses) {
+        if ([g_dumpedClasses containsObject:key]) return;
+        [g_dumpedClasses addObject:key];
+    }
     STLog(@"=== 全量 ivar dump: %s ===", class_getName(cls));
-
     unsigned int ivarCount = 0;
     Ivar *ivars = class_copyIvarList(cls, &ivarCount);
     for (unsigned int i = 0; i < ivarCount; i++) {
         const char *type = ivar_getTypeEncoding(ivars[i]);
         const char *name = ivar_getName(ivars[i]);
         id val = nil;
-        @try { val = object_getIvar(cell, ivars[i]); } @catch (NSException *e) {}
+        @try { val = object_getIvar(obj, ivars[i]); } @catch (NSException *e) {}
         const char *valCls = val ? class_getName([val class]) : "(nil)";
         STLog(@"  ivar[%u] %s %s = <%s>", i, type, name, valCls);
     }
     if (ivars) free(ivars);
 
-    // 也打 property
     unsigned int propCount = 0;
     objc_property_t *props = class_copyPropertyList(cls, &propCount);
     STLog(@"=== 全量 property dump (%u) ===", propCount);
     for (unsigned int i = 0; i < propCount; i++) {
-        const char *name = property_getName(props[i]);
-        const char *attrs = property_getAttributes(props[i]);
-        STLog(@"  prop[%u] %s | %s", i, name, attrs);
+        STLog(@"  prop[%u] %s | %s", i, property_getName(props[i]),
+              property_getAttributes(props[i]));
     }
     if (props) free(props);
-
-    // 打 cell 的 contentView 子视图层级（前2层）
-    STLog(@"=== cell 子视图(前2层) ===");
-    UIView *cv = nil;
-    if ([cell respondsToSelector:@selector(contentView)]) {
-        @try { cv = ((id (*)(id, SEL))objc_msgSend)(cell, @selector(contentView)); }
-        @catch (NSException *e) { cv = nil; }
-    }
-    if (cv) {
-        STDumpViewRec(cv, 0, 2);
-    }
 }
 
 // 递归打印视图层级（纯 C 函数）
@@ -171,48 +162,45 @@ static void STDumpViewRec(UIView *v, int depth, int maxDepth) {
     }
 }
 
-// 从 cell 上尝试获取消息数据对象（v7 增强版）
-static id STGetMessageObjectFromCell(UIView *cell) {
-    if (!cell) return nil;
+// 在任意对象上探测消息数据对象（getter + ivar + property 三连）
+static id STProbeMsgOnObject(id obj) {
+    if (!obj) return nil;
 
     // 方法1：大量常见 getter 选择器（微信各版本用过的方法名）
-    SEL getters[] = {
-        @selector(messageData), @selector(msgData), @selector(message),
-        @selector(msgNode),     @selector(data),
-        @selector(viewModel),   @selector(cellViewModel),
-        @selector(model),       @selector(itemModel),
-        @selector(msgContent),  @selector(messageContent),
-        @selector(wrapModel),  @selector(node),
-        @selector(innerData),  @selector(rawData),
-        @selector(chatMsg),     @selector(chatMessage),
-    };
-    for (size_t i = 0; i < sizeof(getters)/sizeof(getters[0]); i++) {
-        if ([cell respondsToSelector:getters[i]]) {
+    NSArray<NSString *> *getterNames = @[
+        @"messageData", @"msgData",  @"message",  @"msgNode",     @"data",
+        @"viewModel",   @"cellViewModel", @"model", @"itemModel",
+        @"msgContent",  @"messageContent", @"wrapModel", @"node",
+        @"innerData",   @"rawData",  @"chatMsg",  @"chatMessage",
+        @"msg",         @"messageWrap", @"msgWrap", @"messageNode",
+        @"content",     @"cellData", @"cellModel", @"contentModel",
+        @"messageObject", @"msgObject", @"originMessage", @"originalMsg",
+    ];
+    for (NSString *gn in getterNames) {
+        SEL s = NSSelectorFromString(gn);
+        if ([obj respondsToSelector:s]) {
             @try {
-                id obj = ((id (*)(id, SEL))objc_msgSend)(cell, getters[i]);
-                if (obj && ![obj isKindOfClass:[UIView class]]
-                    && ![obj isKindOfClass:[CALayer class]]) {
-                    STLog(@"通过 getter %@ 取到候选: %s",
-                          NSStringFromSelector(getters[i]),
-                          class_getName([obj class]));
-                    return obj;
+                id o = ((id (*)(id, SEL))objc_msgSend)(obj, s);
+                if (o && ![o isKindOfClass:[UIView class]]
+                    && ![o isKindOfClass:[CALayer class]]) {
+                    STLog(@"通过 getter %@ 取到候选: %s", gn, class_getName([o class]));
+                    return o;
                 }
             } @catch (NSException *e) { /* skip */ }
         }
     }
 
-    // 方法2：遍历 ALL ivar（不做类型过滤，全部记录非 nil 的非视图对象）
+    // 方法2：遍历 ALL ivar（排除视图层与基础类型，剩下的都当候选）
     unsigned int ivarCount = 0;
-    Ivar *ivars = class_copyIvarList([cell class], &ivarCount);
+    Ivar *ivars = class_copyIvarList([obj class], &ivarCount);
     NSMutableArray<id> *candidates = [NSMutableArray array];
     for (unsigned int i = 0; i < ivarCount; i++) {
         const char *type = ivar_getTypeEncoding(ivars[i]);
         const char *name = ivar_getName(ivars[i]);
         if (!type || type[0] != '@') continue;
         id val = nil;
-        @try { val = object_getIvar(cell, ivars[i]); } @catch (NSException *e) { continue; }
+        @try { val = object_getIvar(obj, ivars[i]); } @catch (NSException *e) { continue; }
         if (!val) continue;
-        // 排除视图层和基础类型
         if ([val isKindOfClass:[UIView class]] ||
             [val isKindOfClass:[CALayer class]] ||
             [val isKindOfClass:[UIGestureRecognizer class]] ||
@@ -222,61 +210,87 @@ static id STGetMessageObjectFromCell(UIView *cell) {
             [val isKindOfClass:[NSString class]] ||
             [val isKindOfClass:[NSArray class]] ||
             [val isKindOfClass:[NSDictionary class]] ||
-            [val isKindOfClass:[NSData class]]) {
+            [val isKindOfClass:[NSData class]] ||
+            [val isKindOfClass:[NSSet class]]) {
             continue;
         }
-        // 剩下的都是"有可能是数据模型"的对象
-        STLog(@"ivar 候选: %s(%s) -> %s", name, type, class_getName([val class]));
+        STLog(@"ivar 候选: %s -> %s", name, class_getName([val class]));
         [candidates addObject:val];
     }
     if (ivars) free(ivars);
 
-    // 如果恰好只有一个候选，直接用它
     if (candidates.count == 1) {
         id found = candidates.firstObject;
         STLog(@"唯一候选(采用): %s", class_getName([found class]));
         return found;
     }
     if (candidates.count > 1) {
-        // 多个候选：优先选名字含 Msg/Message/Node/Data/C2C 的
         for (id c in candidates) {
             const char *cls = class_getName([c class]);
             if (strstr(cls, "C2C") || strstr(cls, "Msg") ||
-                strstr(cls, "Message") || strstr(cls, "Node")) {
+                strstr(cls, "Message") || strstr(cls, "Node") ||
+                strstr(cls, "Wrap") || strstr(cls, "Chat")) {
                 STLog(@"多候选中匹配到: %s", cls);
                 return c;
             }
         }
-        // 都不匹配就取第一个
         id first = candidates.firstObject;
         STLog(@"多候选无精确匹配，取第一个: %s", class_getName([first class]));
         return first;
     }
 
-    // 方法3：遍历 property（同样放宽过滤）
+    // 方法3：property
     unsigned int propCount = 0;
-    objc_property_t *props = class_copyPropertyList([cell class], &propCount);
+    objc_property_t *props = class_copyPropertyList([obj class], &propCount);
     for (unsigned int i = 0; i < propCount; i++) {
-        const char *name = property_getName(props[i]);
-        NSString *key = [NSString stringWithUTF8String:name];
+        NSString *key = [NSString stringWithUTF8String:property_getName(props[i])];
         @try {
-            id val = [cell valueForKey:key];
+            id val = [obj valueForKey:key];
             if (val && ![val isKindOfClass:[UIView class]]
                 && ![val isKindOfClass:[CALayer class]]
                 && ![val isKindOfClass:[UIGestureRecognizer class]]
                 && ![val isKindOfClass:[NSNumber class]]
                 && ![val isKindOfClass:[NSString class]]
-                && ![val isKindOfClass:[NSArray class]]) {
+                && ![val isKindOfClass:[NSArray class]]
+                && ![val isKindOfClass:[NSSet class]]) {
                 STLog(@"property 候选: %@ -> %s", key, class_getName([val class]));
-                if (!candidates.count) return val;  // property 找到了就直接用
+                return val;
             }
         } @catch (NSException *e) { /* skip */ }
     }
     if (props) free(props);
 
-    // 首次失败：全量 dump 供分析
-    STDumpCellIvars(cell);
+    return nil;
+}
 
+// 从 cell 上尝试获取消息数据对象（v8：先取 cellView 再探测）
+static id STGetMessageObjectFromCell(UIView *cell) {
+    if (!cell) return nil;
+
+    // v8 关键修正：消息对象在 cell.m_cellView (BaseChatCellView / TextMessageCellView) 里，
+    // 不在 ChatTableViewCell 本身。
+    id cellView = nil;
+    Ivar cvIvar = class_getInstanceVariable([cell class], "m_cellView");
+    if (cvIvar) {
+        @try { cellView = object_getIvar(cell, cvIvar); } @catch (NSException *e) {}
+    }
+    if (!cellView && [cell respondsToSelector:@selector(cellView)]) {
+        @try { cellView = ((id (*)(id, SEL))objc_msgSend)(cell, @selector(cellView)); }
+        @catch (NSException *e) {}
+    }
+    if (cellView) {
+        STLog(@"取到 cellView = %s", class_getName([cellView class]));
+        id msg = STProbeMsgOnObject(cellView);
+        if (msg) return msg;
+        // cellView 上没找到 → 全量 dump cellView，便于精准适配
+        STDumpObject(cellView);
+    }
+
+    // 退回对 cell 本身探测
+    id msg = STProbeMsgOnObject(cell);
+    if (msg) return msg;
+
+    STDumpObject(cell);
     STLog(@"未能从 cell(%s) 提取消息对象", class_getName([cell class]));
     return nil;
 }
@@ -380,6 +394,8 @@ static BOOL STIsOwnMessage(id msgObj) {
     SEL sels[] = {
         @selector(isFromMe), @selector(isFromSelf), @selector(isSend),
         @selector(isSender), @selector(fromMe), @selector(isMyMsg),
+        @selector(isSendFromSelf), @selector(isSelf), @selector(sendFromSelf),
+        @selector(isMine),
     };
     for (size_t i = 0; i < sizeof(sels)/sizeof(sels[0]); i++) {
         if ([msgObj respondsToSelector:sels[i]]) {
@@ -399,7 +415,8 @@ static BOOL STIsOwnMessage(id msgObj) {
     // KVC
     NSArray<NSString *> *keys = @[@"isFromMe", @"fromMe", @"isSend", @"isSender",
                                    @"m_bIsSend", @"m_nsFromMe", @"m_isFromMe",
-                                   @"m_bIsSelf", @"isSelf"];
+                                   @"m_bIsSelf", @"isSelf", @"isSendFromSelf",
+                                   @"m_bIsSendFromSelf", @"m_isMyMsg", @"m_bIsMyMsg"];
     for (NSString *k in keys) {
         @try {
             id v = [msgObj valueForKey:k];
