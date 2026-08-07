@@ -1,43 +1,44 @@
-/* Tweak.xm
- * 微信滑动手势独立 Tweak（rootless / ElleKit）
- * 目标进程：com.tencent.xin (WeChat)
+/* Tweak.xm v3 —— 微信滑动手势独立 Tweak（rootless / ElleKit）
  *
- * 功能：
- *   1) 右滑完全禁用（在消息上下文中，拦截 UISwipeGestureRecognizer 右滑，使其不被添加到 view）
- *   2) 左滑替换为自定义动作（v1 弹窗确认，后续可扩展为复制/标记已读/快速回复等）
+ * 为什么 v2 完全无效（复盘）：
+ *   微信的消息侧滑菜单不是 UISwipeGestureRecognizer，而是
+ *   MMMultiMenuTableViewCell 上的 UIPanGestureRecognizer（实例变量 _panGestureRecognizer）
+ *   + handlePan: 自实现（来自公开 class-dump 头文件确认）。
+ *   所以 v2 只拦截 UISwipeGestureRecognizer 的 hook 全部落空，左右滑都没反应。
  *
- * 设计原则（对照老板硬性规则）：
- *   - ① 不虚构任何 OC 私有类 / 私有方法 / selector。
- *       本插件仅使用公开 API（UIKit / runtime）做手势拦截与替换，
- *       不依赖 WCRefine 内部类名或任何硬编码偏移，版本更新不会因偏移失效。
- *   - 替换左滑的做法是：不添加微信原左滑手势，改为给同一 view 添加我们自己的
- *       UISwipeGestureRecognizer（公开 API），从而彻底接管左滑行为。
- *   - 日志写文件到 App 沙盒 Documents（rootless 下唯一稳妥可写路径，
- *       注入 dylib 的 NSLog 无法被 oslog 捕获，故写文件；设备端用 scp 或
- *       TrollFools 文件管理取 /var/mobile/Containers/Data/.../Documents/com.boss.swipetweak.log）。
+ * 本版做法（hook 真正的侧滑 cell 基类）：
+ *   1) MMMultiMenuTableViewCell 是微信所有“可侧滑菜单” cell 的基类（聊天消息 cell 也继承它）。
+ *      - gestureRecognizerShouldBegin: 对 pan 手势返回 NO
+ *        ⇒ 彻底禁用原生左右滑菜单（仅在聊天页 BaseMsgContentViewController 内生效，
+ *           不影响“微信”首页的会话列表等其他列表的侧滑）。
+ *   2) 给该 cell 自己 add 一个左滑 UISwipeGestureRecognizer ⇒ 自定义动作（v1 弹窗确认）。
+ *   3) 不添加右滑手势 ⇒ 右滑无动作（满足“右滑完全禁用”）。
+ *
+ * 规则遵循：
+ *   - ① 不虚构私有类/私有方法：MMMultiMenuTableViewCell / BaseMsgContentViewController
+ *       仅以 NSClassFromString 在运行时按名解析，未声明任何私有头；拦截只用公开
+ *       gestureRecognizerShouldBegin: 与 UISwipeGestureRecognizer 公开 API。
+ *   - 日志写 App 沙盒 Documents/com.boss.swipetweak.log（注入 dylib 的 NSLog 抓不到，故写文件）。
  *
  * 已知局限（如实说明，规则⑧）：
- *   - 拦截基于 UISwipeGestureRecognizer。若新版微信改用 UIPanGestureRecognizer
- *       实现侧滑菜单，则本插件对该菜单无效（右滑禁用/左滑自定义都依赖 swipe 手势）。
- *   - “消息上下文”靠类名启发式判定（Cell/TableView/CollectionView/Message/Chat/Bubble），
- *       覆盖常见聊天列表，但极端自定义类名可能漏判。可在 STIsMessageContext 增删关键字。
+ *   - 依赖类名 MMMultiMenuTableViewCell / BaseMsgContentViewController 在目标微信版本中存在。
+ *     已在 %ctor 与运行中写日志自检；若某版微信改名，日志会显示 NOT FOUND，据此替换类名即可。
+ *   - 禁用 pan 是“连坐”式：聊天页内所有 MMMultiMenuTableViewCell 的原生侧滑菜单都不再出现
+ *     （含原生左滑的 引用/回复/删除 等），统一由我们的左滑接管。若只想在聊天页禁用、保留其他
+ *     列表原生菜单，已用 STInChat 限定聊天页；如仍不满意可放宽/收紧。
  *
- * 编译：make package
- * 注入：TrollFools 注入生成的 .deb / dylib 即可（Filter 限定微信）
- *
- * 作者：小弟 | 2026-08-07 | 用途：逆向研究学习
+ * 编译：make package ｜ 注入：TrollFools 注入生成的 .deb / dylib
+ * 作者：小弟 ｜ 2026-08-07 ｜ 逆向研究学习
  */
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
 #pragma mark - 配置（按需修改后重新编译）
+static BOOL kDisableNativeSwipeMenu = YES;  // 禁用原生左右滑菜单（聊天页内）
+static BOOL kEnableCustomLeftSwipe    = YES; // 启用自定义左滑动作
 
-static BOOL kDisableRightSwipe     = YES;  // 是否禁用右滑（消息上下文内）
-static BOOL kEnableCustomLeftSwipe = YES;  // 是否用自定义动作替换左滑
-
-#pragma mark - 日志工具（公开 API，写 App 沙盒 Documents）
-
+#pragma mark - 日志（公开 API，写 App 沙盒 Documents）
 static NSString     *g_logPath   = nil;
 static NSFileHandle *g_logHandle = nil;
 static NSLock       *g_logLock   = nil;
@@ -57,60 +58,46 @@ static void STInitLog(void) {
     }
 }
 
-// 注意：所有调用必须传 @"" 字符串字面量（本函数形参为 NSString *，规则：不混用 C 字符串）
 static void STLog(NSString *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:args];
     va_end(args);
-
     NSString *line = [NSString stringWithFormat:@"%@ %@\n", [NSDate date], msg];
-
     if (g_logHandle && g_logLock) {
         [g_logLock lock];
         [g_logHandle writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
         [g_logHandle synchronizeFile];
         [g_logLock unlock];
     }
-    // 控制台也输出（oslog 抓不到注入 dylib 的 NSLog，但保留无害）
     NSLog(@"[SwipeTweak] %@", msg);
 }
 
-#pragma mark - 判断是否处于“消息上下文”
-
-// 仅靠类名关键字判定，纯 NSString 操作，不触碰任何私有类。
-static BOOL STIsMessageContext(UIView *view) {
-    UIView *v = view;
-    int depth = 0;
-    while (v && depth < 6) {
-        NSString *cn = NSStringFromClass([v class]);
-        if ([cn containsString:@"Cell"]          ||
-            [cn containsString:@"TableView"]     ||
-            [cn containsString:@"CollectionView"] ||
-            [cn containsString:@"Message"]       ||
-            [cn containsString:@"Chat"]          ||
-            [cn containsString:@"Bubble"]) {
-            return YES;
-        }
-        v = v.superview;
-        depth++;
+#pragma mark - 判断 view 是否处于“聊天页”上下文
+// 沿 responder 链向上找 BaseMsgContentViewController（聊天内容页，类名长期稳定）。
+static BOOL STInChat(UIView *view) {
+    static Class sChatVC = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        sChatVC = NSClassFromString(@"BaseMsgContentViewController");
+    });
+    if (!sChatVC) return NO;
+    UIResponder *r = view;
+    while (r) {
+        if ([r isKindOfClass:sChatVC]) return YES;
+        r = [r nextResponder];
     }
     return NO;
 }
 
 #pragma mark - 自定义左滑动作（v1：弹窗确认）
-
 static void STHandleLeftSwipe(UISwipeGestureRecognizer *g) {
     if (g.state != UIGestureRecognizerStateEnded) return;
 
-    // 找最近的 UIViewController 来 present 弹窗（公开 API 链）
     UIViewController *vc = nil;
     UIResponder *r = g.view;
     while (r) {
-        if ([r isKindOfClass:[UIViewController class]]) {
-            vc = (UIViewController *)r;
-            break;
-        }
+        if ([r isKindOfClass:[UIViewController class]]) { vc = (UIViewController *)r; break; }
         r = [r nextResponder];
     }
 
@@ -123,10 +110,8 @@ static void STHandleLeftSwipe(UISwipeGestureRecognizer *g) {
                                            handler:nil]];
 
     if (vc) {
-        // 正确用法：presentViewController:alert animated:completion:
         [vc presentViewController:alert animated:YES completion:nil];
     } else {
-        // 兜底：通过 keyWindow 的 rootViewController 弹
         UIWindow *win = nil;
         for (UIWindow *w in UIApplication.sharedApplication.windows) {
             if (w.isKeyWindow) { win = w; break; }
@@ -138,84 +123,66 @@ static void STHandleLeftSwipe(UISwipeGestureRecognizer *g) {
     STLog(@"左滑触发 on %@", NSStringFromClass([g.view class]));
 }
 
-#pragma mark - 手势标记（区分“我们自己的手势”）
+#pragma mark - 标记（区分“我们自己的手势”，防重复添加）
+static const void *kSTLeftSwipeAdded = &kSTLeftSwipeAdded;
 
-static const void *kSTOwnGesture = &kSTOwnGesture;
+#pragma mark - 核心 Hook：MMMultiMenuTableViewCell（所有可侧滑 cell 的基类）
+%hook MMMultiMenuTableViewCell
 
-#pragma mark - 核心 Hook：UIView addGestureRecognizer:
-
-%hook UIView
-
-- (void)addGestureRecognizer:(UIGestureRecognizer *)gesture {
-    if ([gesture isKindOfClass:[UISwipeGestureRecognizer class]]) {
-        // 我们自己添加的手势：直接放行，避免无限递归
-        if (objc_getAssociatedObject(gesture, kSTOwnGesture)) {
-            %orig;
-            return;
-        }
-
-        UISwipeGestureRecognizer *swipe = (UISwipeGestureRecognizer *)gesture;
-
-        if (STIsMessageContext(self)) {
-            UISwipeGestureRecognizerDirection dir = swipe.direction;
-
-            // —— 右滑：直接不添加，达到“禁用”效果 ——
-            if (kDisableRightSwipe && (dir & UISwipeGestureRecognizerDirectionRight)) {
-                STLog(@"拦截右滑（不添加）on %@", NSStringFromClass([self class]));
-                return;
-            }
-
-            // —— 左滑：不添加微信原手势，改为添加我们自己的左滑手势 ——
-            if (kEnableCustomLeftSwipe && (dir & UISwipeGestureRecognizerDirectionLeft)) {
-                // 防重复：同一 view 若已有我们的左滑手势则跳过（兼容 cell 复用）
-                BOOL hasOurs = NO;
-                for (UIGestureRecognizer *g in [self gestureRecognizers]) {
-                    if (objc_getAssociatedObject(g, kSTOwnGesture)) { hasOurs = YES; break; }
-                }
-                if (!hasOurs) {
-                    STLog(@"替换左滑（添加自定义）on %@", NSStringFromClass([self class]));
-                    UISwipeGestureRecognizer *ours =
-                        [[UISwipeGestureRecognizer alloc]
-                            initWithTarget:self
-                                    action:@selector(st_leftSwipeFired:)];
-                    ours.direction = UISwipeGestureRecognizerDirectionLeft;
-                    // 标记为我们自己的手势，重入 hook 时直接放行
-                    objc_setAssociatedObject(ours, kSTOwnGesture, @(YES),
-                                            OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                    // 这里会重入 addGestureRecognizer:，被上面的 own-gesture 分支放行
-                    [self addGestureRecognizer:ours];
-                }
-                return; // 始终不添加微信原左滑手势
-            }
-        }
+// 禁用原生侧滑菜单：让 cell 自带的 pan 手势无法开始（聊天页内）
+- (BOOL)gestureRecognizerShouldBegin:(id)gesture {
+    if (kDisableNativeSwipeMenu &&
+        [gesture isKindOfClass:[UIPanGestureRecognizer class]] &&
+        STInChat((UIView *)self)) {
+        STLog(@"禁用原生侧滑菜单(cell=%@)", NSStringFromClass([self class]));
+        return NO;
     }
-
-    %orig;
+    return %orig;
 }
 
-// 我们自定义左滑手势的回调（%new 给 UIView 动态添加方法，公开 API 调用）
+// 给 cell 添加我们自己的左滑手势（仅聊天页，每 cell 实例一次）
+- (void)layoutSubviews {
+    %orig;
+    if (kEnableCustomLeftSwipe && STInChat((UIView *)self)) {
+        if (!objc_getAssociatedObject(self, kSTLeftSwipeAdded)) {
+            objc_setAssociatedObject(self, kSTLeftSwipeAdded, @(YES),
+                                    OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            UISwipeGestureRecognizer *sw = [[UISwipeGestureRecognizer alloc]
+                initWithTarget:self
+                        action:@selector(st_leftSwipe:)];
+            sw.direction = UISwipeGestureRecognizerDirectionLeft;
+            [self addGestureRecognizer:sw];
+            STLog(@"已添加自定义左滑手势 cell=%@", NSStringFromClass([self class]));
+        }
+    }
+}
+
+// 自定义左滑回调（%new 给 cell 动态加方法，公开 API 调用）
 %new
-- (void)st_leftSwipeFired:(UISwipeGestureRecognizer *)g {
+- (void)st_leftSwipe:(UISwipeGestureRecognizer *)g {
     STHandleLeftSwipe(g);
 }
 
 %end
 
-#pragma mark - Constructor：加载时记录环境
-
+#pragma mark - Constructor：加载时记录环境 + 类名自检
 %ctor {
     @autoreleasepool {
         STInitLog();
 
         NSString *bid = NSBundle.mainBundle.bundleIdentifier;
-        STLog(@"========== SwipeTweak Loaded ==========");
+        STLog(@"========== SwipeTweak v3 Loaded ==========");
         STLog(@"bundle=%@ | proc=%@", bid, NSProcessInfo.processInfo.processName);
-        STLog(@"disableRight=%@ | customLeft=%@",
-              kDisableRightSwipe ? @"YES" : @"NO",
+        STLog(@"MMMultiMenuTableViewCell = %@",
+              NSClassFromString(@"MMMultiMenuTableViewCell") ? @"found" : @"NOT FOUND");
+        STLog(@"BaseMsgContentViewController = %@",
+              NSClassFromString(@"BaseMsgContentViewController") ? @"found" : @"NOT FOUND");
+        STLog(@"disableNative=%@ | customLeft=%@",
+              kDisableNativeSwipeMenu ? @"YES" : @"NO",
               kEnableCustomLeftSwipe ? @"YES" : @"NO");
         if (![bid isEqualToString:@"com.tencent.xin"]) {
             STLog(@"警告：非微信进程却已加载（请检查 Filter plist）");
         }
-        STLog(@"========================================");
+        STLog(@"===========================================");
     }
 }
