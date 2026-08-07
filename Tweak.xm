@@ -16,6 +16,7 @@
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <objc/message.h>   // 显式声明 objc_msgSend（ARC 下函数指针转换需要）
 
 #pragma mark - 前向声明
 @interface UIViewController (SwipeTweak)
@@ -337,6 +338,10 @@ static BOOL STIsOwnMessage(id msgObj) {
 
 #pragma mark - 左滑手势处理（带动画 + 真正的删除/撤回）
 
+// 前向声明（函数定义在文件更下方，此处先声明供编译器认可）
+static void STExecuteSwipeAction(UIView *cell);
+static void STShowFallbackAlert(UIViewController *vc, NSString *action, id msgObj);
+
 // 关联对象 key：记录左滑偏移量
 static const void *kSTSwipeOffset   = &kSTSwipeOffset;
 static const void *kSTLeftSwipeAdded = &kSTLeftSwipeAdded;
@@ -617,7 +622,7 @@ static const void *kSTSettingsAdded = &kSTSettingsAdded;
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
-    [tv deselectRowAtIndexPath:indexPath animated:YES];
+    [tv deselectRowAtIndexPath:ip animated:YES];
     if (ip.section == 1) {
         _selectedRow = ip.row;
         NSArray<NSString *> *vals = STActionValues();
