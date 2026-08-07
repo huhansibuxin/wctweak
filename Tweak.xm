@@ -22,6 +22,16 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
+#pragma mark - 前向声明（供 Logos %new 方法与设置面板引用，避免“未声明选择器/类型”编译错误）
+// 给 UIViewController 注入的 %new 方法，先声明选择器让编译器认可
+@interface UIViewController (SwipeTweak)
+- (void)st_maybeAddSettingsButton;
+- (void)st_openSwipeSettings;
+@end
+// 设置面板类前向声明（具体 @implementation 在文件末尾）
+@interface STSettingsViewController : UITableViewController
+@end
+
 #pragma mark - 配置键（NSUserDefaults，设置面板与手势逻辑共用）
 static NSString *kEnabled       = @"com.boss.swipetweak.enabled";        // 总开关
 static NSString *kDisableNative = @"com.boss.swipetweak.disableNative";  // 禁用原生侧滑菜单
@@ -270,9 +280,6 @@ static const void *kSTSettingsAdded = &kSTSettingsAdded;
 %end
 
 #pragma mark - 设置面板（我们自己的 VC，公开 API 实现）
-@interface STSettingsViewController : UITableViewController
-@end
-
 @implementation STSettingsViewController {
     NSArray<NSDictionary *> *_rows;
 }
