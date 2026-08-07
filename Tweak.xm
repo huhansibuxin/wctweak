@@ -1,4 +1,4 @@
-/* Tweak.xm v4 —— 微信滑动手势独立 Tweak（rootless / ElleKit）
+/* Tweak.xm v5 —— 微信滑动手势独立 Tweak（rootless / ElleKit）
  *
  * 复盘 v3 为何“左右滑完全没反应”：
  *   v3 写死了 hook MMMultiMenuTableViewCell（来自【新版微信】公开 class-dump）。
@@ -34,7 +34,6 @@
 
 #pragma mark - 配置键（NSUserDefaults，设置面板与手势逻辑共用）
 static NSString *kEnabled       = @"com.boss.swipetweak.enabled";        // 总开关
-static NSString *kDisableNative = @"com.boss.swipetweak.disableNative";  // 禁用原生侧滑菜单
 static NSString *kCustomLeft    = @"com.boss.swipetweak.customLeft";     // 启用自定义左滑动作
 
 // 读取开关；未设置时给默认值 def
@@ -43,35 +42,18 @@ static BOOL STGetBool(NSString *key, BOOL def) {
     return (v != nil) ? [v boolValue] : def;
 }
 
-#pragma mark - 日志（优先写 /var/jb/tmp，便于 ssh cat；失败回退沙盒 Documents）
+#pragma mark - 日志（固定写 App 沙盒 Documents，rootless 下 /var/jb/tmp 不可写）
 static NSFileHandle *g_logHandle = nil;
 static NSLock       *g_logLock   = nil;
 
 static void STInitLog(void) {
     @autoreleasepool {
-        // 1) 尝试 rootless 可写目录
-        NSString *path = @"/var/jb/tmp/com.boss.swipetweak.log";
-        NSString *dir  = @"/var/jb/tmp";
-        if (![[NSFileManager defaultManager] fileExistsAtPath:dir]) {
-            [[NSFileManager defaultManager] createDirectoryAtPath:dir
-                                          withIntermediateDirectories:YES
-                                                           attributes:nil
-                                                                error:nil];
-        }
-        if ([[NSFileManager defaultManager] createFileAtPath:path
-                                                    contents:nil
-                                                  attributes:nil]) {
-            g_logHandle = [NSFileHandle fileHandleForWritingAtPath:path];
-        }
-        // 2) 失败则回退到 App 沙盒 Documents
-        if (!g_logHandle) {
-            NSArray<NSString *> *paths =
-                NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-            NSString *d = (paths.count > 0) ? paths.firstObject : @"/var/mobile/Documents";
-            path = [d stringByAppendingPathComponent:@"com.boss.swipetweak.log"];
-            [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
-            g_logHandle = [NSFileHandle fileHandleForWritingAtPath:path];
-        }
+        NSArray<NSString *> *paths =
+            NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        NSString *d = (paths.count > 0) ? paths.firstObject : @"/var/mobile/Documents";
+        NSString *path = [d stringByAppendingPathComponent:@"com.boss.swipetweak.log"];
+        [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
+        g_logHandle = [NSFileHandle fileHandleForWritingAtPath:path];
         [g_logHandle seekToEndOfFile];
         g_logLock = [[NSLock alloc] init];
     }
@@ -110,7 +92,7 @@ static void STDiscoverClasses(void) {
         } else if (!sChatVC && [name containsString:@"MsgContentViewController"]) {
             sChatVC = c;
         }
-        // 记录候选“菜单/侧滑”类，供后续版本精细化禁用原生菜单时参考
+        // 记录候选“菜单/侧滑”类，供后续版本精细化定制参考
         if ([name containsString:@"MultiMenu"] ||
             [name containsString:@"Swipe"]    ||
             [name containsString:@"MenuTableViewCell"] ||
@@ -137,7 +119,7 @@ static BOOL STInChat(UIView *view) {
     return NO;
 }
 
-#pragma mark - 自定义左滑动作（弹窗，可后续扩展）
+#pragma mark - 自定义左滑动作（操作菜单：复制 / 引用回复 / 标记已读 / 删除）
 static void STHandleLeftSwipe(UISwipeGestureRecognizer *g) {
     if (g.state != UIGestureRecognizerStateEnded) return;
 
@@ -148,23 +130,70 @@ static void STHandleLeftSwipe(UISwipeGestureRecognizer *g) {
         r = [r nextResponder];
     }
 
-    UIAlertController *alert = [UIAlertController
-        alertControllerWithTitle:@"👈 左滑自定义"
-        message:@"左滑手势已捕获！\n（可在「设置 → ⚙︎滑动」里开关；后续可扩展复制/标记已读/快速回复）"
-        preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"好"
+    // 从 cell 上抓文本（UILabel 子视图里取最长的一段）用于复制/引用
+    __block NSString *msgText = @"";
+    for (UIView *sub in g.view.subviews) {
+        if ([sub isKindOfClass:[UILabel class]]) {
+            UILabel *lbl = (UILabel *)sub;
+            if (lbl.text.length > msgText.length) msgText = lbl.text;
+        }
+    }
+
+    UIAlertController *sheet = [UIAlertController
+        alertControllerWithTitle:@"左滑操作"
+        message:msgText.length ? msgText : nil
+        preferredStyle:UIAlertControllerStyleActionSheet];
+
+    // 复制
+    [sheet addAction:[UIAlertAction actionWithTitle:@"📋 复制"
                                              style:UIAlertActionStyleDefault
+                                           handler:^(UIAlertAction *a) {
+        if (msgText.length > 0) {
+            [[UIPasteboard generalPasteboard] setString:msgText];
+        }
+        STLog(@"左滑操作: 复制 text=%@", msgText);
+    }]];
+
+    // 引用回复（占位：后续可接 BaseMsgContentViewController 的引用 API）
+    [sheet addAction:[UIAlertAction actionWithTitle:@"↩︎ 引用回复"
+                                             style:UIAlertActionStyleDefault
+                                           handler:^(UIAlertAction *a) {
+        STLog(@"左滑操作: 引用回复(待接微信引用API) text=%@", msgText);
+    }]];
+
+    // 标记已读（占位：后续可接会话已读 API）
+    [sheet addAction:[UIAlertAction actionWithTitle:@"✅ 标记已读"
+                                             style:UIAlertActionStyleDefault
+                                           handler:^(UIAlertAction *a) {
+        STLog(@"左滑操作: 标记已读 text=%@", msgText);
+    }]];
+
+    // 删除（占位：后续可接删除单条消息 API）
+    [sheet addAction:[UIAlertAction actionWithTitle:@"🗑 删除"
+                                             style:UIAlertActionStyleDestructive
+                                           handler:^(UIAlertAction *a) {
+        STLog(@"左滑操作: 删除(待接微信删除API) text=%@", msgText);
+    }]];
+
+    // 取消
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消"
+                                             style:UIAlertActionStyleCancel
                                            handler:nil]];
 
+    // 在 iPad 上 ActionSheet 需要 sourceView，否则崩溃
     if (vc) {
-        [vc presentViewController:alert animated:YES completion:nil];
+        if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+            sheet.popoverPresentationController.sourceView = g.view;
+            sheet.popoverPresentationController.sourceRect = g.view.bounds;
+        }
+        [vc presentViewController:sheet animated:YES completion:nil];
     } else {
         UIWindow *win = nil;
         for (UIWindow *w in UIApplication.sharedApplication.windows) {
             if (w.isKeyWindow) { win = w; break; }
         }
         if (win.rootViewController) {
-            [win.rootViewController presentViewController:alert animated:YES completion:nil];
+            [win.rootViewController presentViewController:sheet animated:YES completion:nil];
         }
     }
     STLog(@"左滑触发 on %@", NSStringFromClass([g.view class]));
@@ -189,28 +218,12 @@ static void STConfigureCell(UIView *cell) {
     }
 }
 
-// 原生侧滑菜单通常是 cell 上的 UIPanGestureRecognizer；在聊天页内直接拦掉
-static BOOL STShouldBlockNativePan(UIView *cell, id gesture) {
-    if (STGetBool(kEnabled, YES) && STGetBool(kDisableNative, YES) &&
-        [gesture isKindOfClass:[UIPanGestureRecognizer class]] &&
-        STInChat(cell)) {
-        STLog(@"禁用原生侧滑 pan cell=%@", NSStringFromClass([cell class]));
-        return YES;
-    }
-    return NO;
-}
-
 #pragma mark - 核心 Hook：UITableViewCell（聊天消息 cell 的公开基类，跨版本稳定）
 %hook UITableViewCell
 
 - (void)layoutSubviews {
     %orig;
     STConfigureCell((UIView *)self);
-}
-
-- (BOOL)gestureRecognizerShouldBegin:(id)gesture {
-    if (STShouldBlockNativePan((UIView *)self, gesture)) return NO;
-    return %orig;
 }
 
 %new
@@ -226,11 +239,6 @@ static BOOL STShouldBlockNativePan(UIView *cell, id gesture) {
 - (void)layoutSubviews {
     %orig;
     STConfigureCell((UIView *)self);
-}
-
-- (BOOL)gestureRecognizerShouldBegin:(id)gesture {
-    if (STShouldBlockNativePan((UIView *)self, gesture)) return NO;
-    return %orig;
 }
 
 %new
@@ -289,9 +297,8 @@ static const void *kSTSettingsAdded = &kSTSettingsAdded;
     if (self) {
         self.title = @"滑动手势设置";
         _rows = @[
-            @{@"key": kEnabled,       @"title": @"启用滑动插件"},
-            @{@"key": kDisableNative, @"title": @"禁用原生侧滑菜单"},
-            @{@"key": kCustomLeft,    @"title": @"启用自定义左滑动作"},
+            @{@"key": kEnabled,    @"title": @"启用滑动插件"},
+            @{@"key": kCustomLeft, @"title": @"启用自定义左滑动作"},
         ];
     }
     return self;
@@ -335,13 +342,12 @@ static const void *kSTSettingsAdded = &kSTSettingsAdded;
         STDiscoverClasses();
 
         NSString *bid = NSBundle.mainBundle.bundleIdentifier;
-        STLog(@"========== SwipeTweak v4 Loaded ==========");
+        STLog(@"========== SwipeTweak v5 Loaded ==========");
         STLog(@"bundle=%@ | proc=%@", bid, NSProcessInfo.processInfo.processName);
         STLog(@"chatVC=%@", sChatVC ? NSStringFromClass(sChatVC)
                                     : @"BaseMsgContentViewController(fallback)");
-        STLog(@"enabled=%@ disableNative=%@ customLeft=%@",
+        STLog(@"enabled=%@ customLeft=%@",
               STGetBool(kEnabled, YES) ? @"YES" : @"NO",
-              STGetBool(kDisableNative, YES) ? @"YES" : @"NO",
               STGetBool(kCustomLeft, YES) ? @"YES" : @"NO");
         if (![bid isEqualToString:@"com.tencent.xin"]) {
             STLog(@"警告：非微信进程却已加载（请检查 Filter plist）");
