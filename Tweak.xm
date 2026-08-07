@@ -22,8 +22,8 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
-#pragma mark - 前向声明（供 Logos %new 方法与设置面板引用，避免“未声明选择器/类型”编译错误）
-// 给 UIViewController 注入的 %new 方法，先声明选择器让编译器认可
+#pragma mark - 前向声明（供注入的新方法与设置面板引用，避免“未声明选择器/类型”编译错误）
+// 给 UIViewController 注入的新方法，先声明选择器让编译器认可
 @interface UIViewController (SwipeTweak)
 - (void)st_maybeAddSettingsButton;
 - (void)st_openSwipeSettings;
