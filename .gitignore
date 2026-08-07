@@ -8,3 +8,13 @@ packages/
 # macOS / 系统
 .DS_Store
 *.swp
+
+# 本地产物 / CI 辅助脚本（不入库）
+artifacts/
+*.zip
+buildlog*.txt
+v*.zip
+_ci.py
+_dl.py
+_poll.py
+_poll2.py
