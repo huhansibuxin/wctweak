@@ -7,31 +7,17 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential git fakeroot dpkg-dev unzip curl
-
-      - name: Setup Theos
+      - name: Setup Theos (recursive, 含 logos/headers/lib 等 vendor 子模块)
         run: |
           git clone --recursive https://github.com/theos/theos.git $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
 
-      - name: Download iOS SDK
-        run: |
-          curl -sL https://github.com/theos/sdks/archive/refs/heads/master.zip -o /tmp/sdks.zip
-          mkdir -p $HOME/theos/sdks
-          cd /tmp && unzip -q -o sdks.zip
-          # 复制所有 .sdk 到 theos/sdks
-          cp -r /tmp/sdks-master/*.sdk $HOME/theos/sdks/ 2>/dev/null || true
-          ls $HOME/theos/sdks/ | head
-
-      - name: Build package
+      - name: Build package (macOS 用 Xcode 自带 clang + iOS SDK，无需单独工具链)
         env:
           THEOS: ${{ env.THEOS }}
         run: |

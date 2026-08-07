@@ -1,0 +1,294 @@
+﻿2026-08-07T04:35:11.5922655Z Current runner version: '2.336.0'
+2026-08-07T04:35:11.5955640Z ##[group]Runner Image Provisioner
+2026-08-07T04:35:11.5956968Z Hosted Compute Agent
+2026-08-07T04:35:11.5958036Z Version: 20260707.563
+2026-08-07T04:35:11.5959031Z Commit: 02667638d2b423fbc733a8e32a88b44996a3ba6e
+2026-08-07T04:35:11.5960269Z Build Date: 2026-07-07T19:33:50Z
+2026-08-07T04:35:11.5961822Z Worker ID: {406dc2b2-003a-4373-926e-408f220d565d}
+2026-08-07T04:35:11.5963017Z Azure Region: eastus
+2026-08-07T04:35:11.5964084Z ##[endgroup]
+2026-08-07T04:35:11.5966773Z ##[group]Operating System
+2026-08-07T04:35:11.5967799Z Ubuntu
+2026-08-07T04:35:11.5968854Z 24.04.4
+2026-08-07T04:35:11.5969670Z LTS
+2026-08-07T04:35:11.5970522Z ##[endgroup]
+2026-08-07T04:35:11.5971720Z ##[group]Runner Image
+2026-08-07T04:35:11.5972731Z Image: ubuntu-24.04
+2026-08-07T04:35:11.5973789Z Version: 20260720.247.2
+2026-08-07T04:35:11.5976347Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260720.247/images/ubuntu/Ubuntu2404-Readme.md
+2026-08-07T04:35:11.5979012Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260720.247
+2026-08-07T04:35:11.5980730Z ##[endgroup]
+2026-08-07T04:35:11.5982969Z ##[group]GITHUB_TOKEN Permissions
+2026-08-07T04:35:11.5985942Z Contents: read
+2026-08-07T04:35:11.5986881Z Metadata: read
+2026-08-07T04:35:11.5987919Z Packages: read
+2026-08-07T04:35:11.5988942Z ##[endgroup]
+2026-08-07T04:35:11.5992030Z Secret source: Actions
+2026-08-07T04:35:11.5994211Z Prepare workflow directory
+2026-08-07T04:35:11.6462373Z Prepare all required actions
+2026-08-07T04:35:11.6533696Z Getting action download info
+2026-08-07T04:35:11.8419684Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-08-07T04:35:12.0341136Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-08-07T04:35:12.2514766Z Complete job name: build
+2026-08-07T04:35:12.3266168Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-08-07T04:35:12.3275234Z ##[group]Run actions/checkout@v4
+2026-08-07T04:35:12.3275980Z with:
+2026-08-07T04:35:12.3276438Z   repository: huhansibuxin/wctweak
+2026-08-07T04:35:12.3280292Z   token: ***
+2026-08-07T04:35:12.3280721Z   ssh-strict: true
+2026-08-07T04:35:12.3281141Z   ssh-user: git
+2026-08-07T04:35:12.3281768Z   persist-credentials: true
+2026-08-07T04:35:12.3282263Z   clean: true
+2026-08-07T04:35:12.3282702Z   sparse-checkout-cone-mode: true
+2026-08-07T04:35:12.3283228Z   fetch-depth: 1
+2026-08-07T04:35:12.3283660Z   fetch-tags: false
+2026-08-07T04:35:12.3284095Z   show-progress: true
+2026-08-07T04:35:12.3284537Z   lfs: false
+2026-08-07T04:35:12.3284976Z   submodules: false
+2026-08-07T04:35:12.3285422Z   set-safe-directory: true
+2026-08-07T04:35:12.3285930Z   allow-unsafe-pr-checkout: false
+2026-08-07T04:35:12.3286697Z ##[endgroup]
+2026-08-07T04:35:12.4306459Z Syncing repository: huhansibuxin/wctweak
+2026-08-07T04:35:12.4308283Z ##[group]Getting Git version info
+2026-08-07T04:35:12.4309012Z Working directory is '/home/runner/work/wctweak/wctweak'
+2026-08-07T04:35:12.4309987Z [command]/usr/bin/git version
+2026-08-07T04:35:12.4409617Z git version 2.54.0
+2026-08-07T04:35:12.4436980Z ##[endgroup]
+2026-08-07T04:35:12.4453435Z Temporarily overriding HOME='/home/runner/work/_temp/a3168e66-f621-4381-8647-6146b8f1f4fb' before making global git config changes
+2026-08-07T04:35:12.4454972Z Adding repository directory to the temporary git global config as a safe directory
+2026-08-07T04:35:12.4459907Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wctweak/wctweak
+2026-08-07T04:35:12.4524783Z Deleting the contents of '/home/runner/work/wctweak/wctweak'
+2026-08-07T04:35:12.4529559Z ##[group]Initializing the repository
+2026-08-07T04:35:12.4535217Z [command]/usr/bin/git init /home/runner/work/wctweak/wctweak
+2026-08-07T04:35:12.4681880Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-08-07T04:35:12.4683920Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-08-07T04:35:12.4685552Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-08-07T04:35:12.4686579Z hint: call:
+2026-08-07T04:35:12.4687007Z hint:
+2026-08-07T04:35:12.4687542Z hint: 	git config --global init.defaultBranch <name>
+2026-08-07T04:35:12.4688193Z hint:
+2026-08-07T04:35:12.4688808Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-08-07T04:35:12.4689813Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-08-07T04:35:12.4690595Z hint:
+2026-08-07T04:35:12.4691026Z hint: 	git branch -m <name>
+2026-08-07T04:35:12.4692013Z hint:
+2026-08-07T04:35:12.4693019Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-08-07T04:35:12.4701956Z Initialized empty Git repository in /home/runner/work/wctweak/wctweak/.git/
+2026-08-07T04:35:12.4712767Z [command]/usr/bin/git remote add origin https://github.com/huhansibuxin/wctweak
+2026-08-07T04:35:12.4764561Z ##[endgroup]
+2026-08-07T04:35:12.4765470Z ##[group]Disabling automatic garbage collection
+2026-08-07T04:35:12.4768966Z [command]/usr/bin/git config --local gc.auto 0
+2026-08-07T04:35:12.4802601Z ##[endgroup]
+2026-08-07T04:35:12.4804449Z ##[group]Setting up auth
+2026-08-07T04:35:12.4812032Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-08-07T04:35:12.4851062Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-08-07T04:35:12.5277213Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-08-07T04:35:12.5313254Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-08-07T04:35:12.5550412Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-08-07T04:35:12.5587569Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-08-07T04:35:12.5819416Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-08-07T04:35:12.5861450Z ##[endgroup]
+2026-08-07T04:35:12.5863147Z ##[group]Fetching the repository
+2026-08-07T04:35:12.5873300Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +742e4a889533f8bb6ccc25a7c57ffc2ff31e5076:refs/remotes/origin/main
+2026-08-07T04:35:12.7749698Z From https://github.com/huhansibuxin/wctweak
+2026-08-07T04:35:12.7750619Z  * [new ref]         742e4a889533f8bb6ccc25a7c57ffc2ff31e5076 -> origin/main
+2026-08-07T04:35:12.7788884Z ##[endgroup]
+2026-08-07T04:35:12.7789643Z ##[group]Determining the checkout info
+2026-08-07T04:35:12.7790834Z ##[endgroup]
+2026-08-07T04:35:12.7797741Z [command]/usr/bin/git sparse-checkout disable
+2026-08-07T04:35:12.7846904Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-08-07T04:35:12.7882461Z ##[group]Checking out the ref
+2026-08-07T04:35:12.7883384Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-08-07T04:35:12.7936991Z Switched to a new branch 'main'
+2026-08-07T04:35:12.7939744Z branch 'main' set up to track 'origin/main'.
+2026-08-07T04:35:12.7946112Z ##[endgroup]
+2026-08-07T04:35:12.7990036Z [command]/usr/bin/git log -1 --format=%H
+2026-08-07T04:35:12.8016612Z 742e4a889533f8bb6ccc25a7c57ffc2ff31e5076
+2026-08-07T04:35:12.8237322Z ##[group]Run sudo apt-get update
+2026-08-07T04:35:12.8238003Z [36;1msudo apt-get update[0m
+2026-08-07T04:35:12.8239002Z [36;1msudo apt-get install -y build-essential git fakeroot dpkg-dev unzip curl[0m
+2026-08-07T04:35:12.8287545Z shell: /usr/bin/bash -e {0}
+2026-08-07T04:35:12.8288114Z ##[endgroup]
+2026-08-07T04:35:12.9461403Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-08-07T04:35:12.9703144Z Get:3 https://packages.microsoft.com/repos/azure-cli noble InRelease [3564 B]
+2026-08-07T04:35:12.9833126Z Get:4 https://packages.microsoft.com/ubuntu/24.04/prod noble InRelease [3600 B]
+2026-08-07T04:35:12.9850706Z Get:5 https://dl.google.com/linux/chrome-stable/deb stable InRelease [2548 B]
+2026-08-07T04:35:12.9853340Z Hit:2 http://azure.archive.ubuntu.com/ubuntu noble InRelease
+2026-08-07T04:35:12.9867583Z Get:6 http://azure.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+2026-08-07T04:35:12.9974532Z Get:7 http://azure.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+2026-08-07T04:35:13.0158312Z Get:8 http://azure.archive.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+2026-08-07T04:35:13.0806732Z Get:9 https://packages.microsoft.com/repos/azure-cli noble/main amd64 Packages [2375 B]
+2026-08-07T04:35:13.1266629Z Get:10 https://packages.microsoft.com/ubuntu/24.04/prod noble/main all Packages [643 B]
+2026-08-07T04:35:13.1295016Z Get:11 https://packages.microsoft.com/ubuntu/24.04/prod noble/main amd64 Packages [308 kB]
+2026-08-07T04:35:13.1362384Z Get:12 https://packages.microsoft.com/ubuntu/24.04/prod noble/main arm64 Packages [268 kB]
+2026-08-07T04:35:13.1392362Z Get:13 https://packages.microsoft.com/ubuntu/24.04/prod noble/main armhf Packages [12.2 kB]
+2026-08-07T04:35:13.1926921Z Get:14 https://dl.google.com/linux/chrome-stable/deb stable/main amd64 Packages [1411 B]
+2026-08-07T04:35:13.2851005Z Get:15 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1184 kB]
+2026-08-07T04:35:13.2933419Z Get:16 http://azure.archive.ubuntu.com/ubuntu noble-updates/main Translation-en [281 kB]
+2026-08-07T04:35:13.2962926Z Get:17 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Components [180 kB]
+2026-08-07T04:35:13.2985388Z Get:18 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [1682 kB]
+2026-08-07T04:35:13.3062286Z Get:19 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe Translation-en [335 kB]
+2026-08-07T04:35:13.3090416Z Get:20 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Components [388 kB]
+2026-08-07T04:35:13.3122249Z Get:21 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [1414 kB]
+2026-08-07T04:35:13.3196391Z Get:22 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted Translation-en [320 kB]
+2026-08-07T04:35:13.3222608Z Get:23 http://azure.archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Packages [45.4 kB]
+2026-08-07T04:35:13.3236391Z Get:24 http://azure.archive.ubuntu.com/ubuntu noble-updates/multiverse Translation-en [12.3 kB]
+2026-08-07T04:35:13.3690970Z Get:25 http://azure.archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Components [940 B]
+2026-08-07T04:35:13.3709480Z Get:26 http://azure.archive.ubuntu.com/ubuntu noble-backports/main amd64 Components [5744 B]
+2026-08-07T04:35:13.3723178Z Get:27 http://azure.archive.ubuntu.com/ubuntu noble-backports/universe amd64 Packages [31.0 kB]
+2026-08-07T04:35:13.3738852Z Get:28 http://azure.archive.ubuntu.com/ubuntu noble-backports/universe amd64 Components [12.6 kB]
+2026-08-07T04:35:13.3938592Z Get:29 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Packages [927 kB]
+2026-08-07T04:35:13.3995679Z Get:30 http://azure.archive.ubuntu.com/ubuntu noble-security/main Translation-en [201 kB]
+2026-08-07T04:35:13.4017457Z Get:31 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Components [46.4 kB]
+2026-08-07T04:35:13.4038447Z Get:32 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1199 kB]
+2026-08-07T04:35:13.4103682Z Get:33 http://azure.archive.ubuntu.com/ubuntu noble-security/universe Translation-en [239 kB]
+2026-08-07T04:35:13.4129058Z Get:34 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Components [76.3 kB]
+2026-08-07T04:35:13.4147876Z Get:35 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1320 kB]
+2026-08-07T04:35:13.4218424Z Get:36 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted Translation-en [302 kB]
+2026-08-07T04:35:13.4244765Z Get:37 http://azure.archive.ubuntu.com/ubuntu noble-security/multiverse amd64 Packages [40.3 kB]
+2026-08-07T04:35:13.4259420Z Get:38 http://azure.archive.ubuntu.com/ubuntu noble-security/multiverse Translation-en [10.6 kB]
+2026-08-07T04:35:17.7185604Z Fetched 11.2 MB in 1s (7729 kB/s)
+2026-08-07T04:35:18.4222990Z Reading package lists...
+2026-08-07T04:35:18.4529451Z Reading package lists...
+2026-08-07T04:35:18.6029837Z Building dependency tree...
+2026-08-07T04:35:18.6038561Z Reading state information...
+2026-08-07T04:35:18.7489278Z git is already the newest version (1:2.54.0-0ppa1~ubuntu24.04.1).
+2026-08-07T04:35:18.7490088Z git set to manually installed.
+2026-08-07T04:35:18.7490765Z fakeroot is already the newest version (1.33-1).
+2026-08-07T04:35:18.7491736Z dpkg-dev is already the newest version (1.22.6ubuntu6.6).
+2026-08-07T04:35:18.7492454Z unzip is already the newest version (6.0-28ubuntu4.1).
+2026-08-07T04:35:18.7493242Z curl is already the newest version (8.5.0-2ubuntu10.11).
+2026-08-07T04:35:18.7493912Z The following NEW packages will be installed:
+2026-08-07T04:35:18.7495379Z   build-essential
+2026-08-07T04:35:18.7667255Z 0 upgraded, 1 newly installed, 0 to remove and 86 not upgraded.
+2026-08-07T04:35:18.7668079Z Need to get 4928 B of archives.
+2026-08-07T04:35:18.7668878Z After this operation, 17.4 kB of additional disk space will be used.
+2026-08-07T04:35:18.7669625Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-08-07T04:35:18.7931000Z Get:2 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 build-essential amd64 12.10ubuntu1 [4928 B]
+2026-08-07T04:35:19.0319426Z Fetched 4928 B in 0s (126 kB/s)
+2026-08-07T04:35:19.0623469Z Selecting previously unselected package build-essential.
+2026-08-07T04:35:19.0906819Z (Reading database ... 
+2026-08-07T04:35:19.0907440Z (Reading database ... 5%
+2026-08-07T04:35:19.0908280Z (Reading database ... 10%
+2026-08-07T04:35:19.0909290Z (Reading database ... 15%
+2026-08-07T04:35:19.0910060Z (Reading database ... 20%
+2026-08-07T04:35:19.0910538Z (Reading database ... 25%
+2026-08-07T04:35:19.0910972Z (Reading database ... 30%
+2026-08-07T04:35:19.0911416Z (Reading database ... 35%
+2026-08-07T04:35:19.0912294Z (Reading database ... 40%
+2026-08-07T04:35:19.0912838Z (Reading database ... 45%
+2026-08-07T04:35:19.0913342Z (Reading database ... 50%
+2026-08-07T04:35:19.0967109Z (Reading database ... 55%
+2026-08-07T04:35:19.1676137Z (Reading database ... 60%
+2026-08-07T04:35:19.3669242Z (Reading database ... 65%
+2026-08-07T04:35:19.5517322Z (Reading database ... 70%
+2026-08-07T04:35:19.6684381Z (Reading database ... 75%
+2026-08-07T04:35:19.8544213Z (Reading database ... 80%
+2026-08-07T04:35:20.0732002Z (Reading database ... 85%
+2026-08-07T04:35:20.1643053Z (Reading database ... 90%
+2026-08-07T04:35:20.2732010Z (Reading database ... 95%
+2026-08-07T04:35:20.2732714Z (Reading database ... 100%
+2026-08-07T04:35:20.2733369Z (Reading database ... 202954 files and directories currently installed.)
+2026-08-07T04:35:20.2774170Z Preparing to unpack .../build-essential_12.10ubuntu1_amd64.deb ...
+2026-08-07T04:35:20.2802552Z Unpacking build-essential (12.10ubuntu1) ...
+2026-08-07T04:35:20.3183015Z Setting up build-essential (12.10ubuntu1) ...
+2026-08-07T04:35:21.3508226Z 
+2026-08-07T04:35:21.3508952Z Running kernel seems to be up-to-date.
+2026-08-07T04:35:21.3509410Z 
+2026-08-07T04:35:21.3509614Z No services need to be restarted.
+2026-08-07T04:35:21.3509979Z 
+2026-08-07T04:35:21.3510174Z No containers need to be restarted.
+2026-08-07T04:35:21.3510549Z 
+2026-08-07T04:35:21.3511296Z No user sessions are running outdated binaries.
+2026-08-07T04:35:21.3512128Z 
+2026-08-07T04:35:21.3512629Z No VM guests are running outdated hypervisor (qemu) binaries on this host.
+2026-08-07T04:35:22.1820537Z ##[group]Run git clone --recursive https://github.com/theos/theos.git $HOME/theos
+2026-08-07T04:35:22.1821157Z [36;1mgit clone --recursive https://github.com/theos/theos.git $HOME/theos[0m
+2026-08-07T04:35:22.1821886Z [36;1mecho "THEOS=$HOME/theos" >> $GITHUB_ENV[0m
+2026-08-07T04:35:22.1866837Z shell: /usr/bin/bash -e {0}
+2026-08-07T04:35:22.1867084Z ##[endgroup]
+2026-08-07T04:35:22.1941451Z Cloning into '/home/runner/theos'...
+2026-08-07T04:35:22.5246548Z Submodule 'vendor/dm.pl' (https://github.com/theos/dm.pl.git) registered for path 'vendor/dm.pl'
+2026-08-07T04:35:22.5248203Z Submodule 'vendor/include' (https://github.com/theos/headers.git) registered for path 'vendor/include'
+2026-08-07T04:35:22.5252436Z Submodule 'vendor/lib' (https://github.com/theos/lib.git) registered for path 'vendor/lib'
+2026-08-07T04:35:22.5253517Z Submodule 'vendor/logos' (https://github.com/theos/logos.git) registered for path 'vendor/logos'
+2026-08-07T04:35:22.5263173Z Submodule 'vendor/nic' (https://github.com/theos/nic.git) registered for path 'vendor/nic'
+2026-08-07T04:35:22.5264346Z Submodule 'vendor/orion' (https://github.com/theos/orion.git) registered for path 'vendor/orion'
+2026-08-07T04:35:22.5265722Z Submodule 'vendor/swift-support' (https://github.com/theos/swift-support.git) registered for path 'vendor/swift-support'
+2026-08-07T04:35:22.5267180Z Submodule 'vendor/templates' (https://github.com/theos/templates.git) registered for path 'vendor/templates'
+2026-08-07T04:35:22.5288063Z Cloning into '/home/runner/theos/vendor/dm.pl'...
+2026-08-07T04:35:22.6501730Z Cloning into '/home/runner/theos/vendor/include'...
+2026-08-07T04:35:23.1983074Z Cloning into '/home/runner/theos/vendor/lib'...
+2026-08-07T04:35:23.3968700Z Cloning into '/home/runner/theos/vendor/logos'...
+2026-08-07T04:35:23.8585706Z Cloning into '/home/runner/theos/vendor/nic'...
+2026-08-07T04:35:23.9793230Z Cloning into '/home/runner/theos/vendor/orion'...
+2026-08-07T04:35:24.3698728Z Cloning into '/home/runner/theos/vendor/swift-support'...
+2026-08-07T04:35:24.4833279Z Cloning into '/home/runner/theos/vendor/templates'...
+2026-08-07T04:35:24.6397509Z Submodule path 'vendor/dm.pl': checked out 'd9a3b72e274226dd2823c0a7c1d6d05099f4f51c'
+2026-08-07T04:35:24.6846293Z Submodule path 'vendor/include': checked out '13c1f17176d7efe6871551cd69a75b71ac4eeaf1'
+2026-08-07T04:35:24.7089192Z Submodule path 'vendor/lib': checked out '6f2af307568e6b8c52181d26314b0cd69ffaf188'
+2026-08-07T04:35:24.7203298Z Submodule path 'vendor/logos': checked out '777925d1add4ee3485a2432a6f6d5e3ded59de7b'
+2026-08-07T04:35:24.7301686Z Submodule path 'vendor/nic': checked out '4e7adcbeac2e4636b91e2f76341adfe4c4d0ceec'
+2026-08-07T04:35:24.7486687Z Submodule path 'vendor/orion': checked out 'c0ed879ecaae16f3c8d06a6c36302f6c78d1f7e4'
+2026-08-07T04:35:24.7503115Z Submodule 'fishhook' (https://github.com/facebook/fishhook.git) registered for path 'vendor/orion/fishhook'
+2026-08-07T04:35:24.7528409Z Cloning into '/home/runner/theos/vendor/orion/fishhook'...
+2026-08-07T04:35:25.1186793Z Submodule path 'vendor/orion/fishhook': checked out 'aadc161ac3b80db07a9908851839a17ba63a9eb1'
+2026-08-07T04:35:25.1281883Z Submodule path 'vendor/swift-support': checked out '4cf59ff04cdb2ceb27ea2228753e0497297b6182'
+2026-08-07T04:35:25.1474461Z Submodule path 'vendor/templates': checked out '6c3944e281c4726f1383755d0fbb642840312d28'
+2026-08-07T04:35:25.1546836Z ##[group]Run curl -sL https://github.com/theos/sdks/archive/refs/heads/master.zip -o /tmp/sdks.zip
+2026-08-07T04:35:25.1547570Z [36;1mcurl -sL https://github.com/theos/sdks/archive/refs/heads/master.zip -o /tmp/sdks.zip[0m
+2026-08-07T04:35:25.1548035Z [36;1mmkdir -p $HOME/theos/sdks[0m
+2026-08-07T04:35:25.1548304Z [36;1mcd /tmp && unzip -q -o sdks.zip[0m
+2026-08-07T04:35:25.1548569Z [36;1m# 复制所有 .sdk 到 theos/sdks[0m
+2026-08-07T04:35:25.1548919Z [36;1mcp -r /tmp/sdks-master/*.sdk $HOME/theos/sdks/ 2>/dev/null || true[0m
+2026-08-07T04:35:25.1549295Z [36;1mls $HOME/theos/sdks/ | head[0m
+2026-08-07T04:35:25.1599210Z shell: /usr/bin/bash -e {0}
+2026-08-07T04:35:25.1599451Z env:
+2026-08-07T04:35:25.1599658Z   THEOS: /home/runner/theos
+2026-08-07T04:35:25.1599884Z ##[endgroup]
+2026-08-07T04:36:07.6140674Z AppleTVOS10.2.sdk
+2026-08-07T04:36:07.6141224Z AppleTVOS11.4.sdk
+2026-08-07T04:36:07.6141910Z AppleTVOS12.4.sdk
+2026-08-07T04:36:07.6142549Z iPhoneOS10.3.sdk
+2026-08-07T04:36:07.6143074Z iPhoneOS11.4.sdk
+2026-08-07T04:36:07.6143441Z iPhoneOS12.4.sdk
+2026-08-07T04:36:07.6143863Z iPhoneOS13.7.sdk
+2026-08-07T04:36:07.6144267Z iPhoneOS14.5.sdk
+2026-08-07T04:36:07.6144671Z iPhoneOS15.6.sdk
+2026-08-07T04:36:07.6145096Z iPhoneOS16.5.sdk
+2026-08-07T04:36:07.6188911Z ##[group]Run make package FINALPACKAGE=1
+2026-08-07T04:36:07.6189269Z [36;1mmake package FINALPACKAGE=1[0m
+2026-08-07T04:36:07.6234482Z shell: /usr/bin/bash -e {0}
+2026-08-07T04:36:07.6234723Z env:
+2026-08-07T04:36:07.6234917Z   THEOS: /home/runner/theos
+2026-08-07T04:36:07.6235140Z ##[endgroup]
+2026-08-07T04:36:07.8165162Z [1;31m> [1;3;39mMaking all for tweak wechat_swipe_tweak…[m
+2026-08-07T04:36:07.8542807Z bash: line 1: /home/runner/theos/toolchain/linux/iphone/bin/clang: No such file or directory
+2026-08-07T04:36:07.8972737Z bash: line 1: /home/runner/theos/toolchain/linux/iphone/bin/clang: No such file or directory
+2026-08-07T04:36:07.9417385Z bash: line 1: /home/runner/theos/toolchain/linux/iphone/bin/clang: No such file or directory
+2026-08-07T04:36:08.2446129Z [0;31m==> [1;39mPreprocessing Tweak.xm…[m
+2026-08-07T04:36:08.2518919Z bash: line 1: /home/runner/theos/toolchain/linux/iphone/bin/clang++: No such file or directory
+2026-08-07T04:36:08.2520096Z [0;32m==> [1;39mCompiling Tweak.xm (arm64)…[m
+2026-08-07T04:36:08.2521850Z make[3]: *** [/home/runner/theos/makefiles/instance/rules.mk:417: /home/runner/work/wctweak/wctweak/.theos/obj/arm64/Tweak.xm.57ad3cdf.o] Error 127
+2026-08-07T04:36:08.2523022Z rm /home/runner/work/wctweak/wctweak/.theos/obj/arm64/Tweak.xm.mm
+2026-08-07T04:36:08.2526846Z make[2]: *** [/home/runner/theos/makefiles/instance/library.mk:52: /home/runner/work/wctweak/wctweak/.theos/obj/arm64/wechat_swipe_tweak.dylib] Error 2
+2026-08-07T04:36:08.2528015Z make[1]: *** [/home/runner/theos/makefiles/instance/library.mk:37: internal-library-all_] Error 2
+2026-08-07T04:36:08.2529301Z make: *** [/home/runner/theos/makefiles/master/rules.mk:146: wechat_swipe_tweak.all.tweak.variables] Error 2
+2026-08-07T04:36:08.2547489Z ##[error]Process completed with exit code 2.
+2026-08-07T04:36:08.2720793Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-08-07T04:36:08.2722644Z Post job cleanup.
+2026-08-07T04:36:08.3632350Z [command]/usr/bin/git version
+2026-08-07T04:36:08.3686279Z git version 2.54.0
+2026-08-07T04:36:08.3783717Z Temporarily overriding HOME='/home/runner/work/_temp/a5833f11-092d-41fa-a08d-ad78b051f141' before making global git config changes
+2026-08-07T04:36:08.3785373Z Adding repository directory to the temporary git global config as a safe directory
+2026-08-07T04:36:08.3789829Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wctweak/wctweak
+2026-08-07T04:36:08.4030173Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-08-07T04:36:08.4078965Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-08-07T04:36:08.4386165Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-08-07T04:36:08.4493736Z http.https://github.com/.extraheader
+2026-08-07T04:36:08.4510321Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-08-07T04:36:08.4538626Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-08-07T04:36:08.4795107Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-08-07T04:36:08.4834567Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-08-07T04:36:08.5215347Z Cleaning up orphan processes
+2026-08-07T04:36:08.5531215Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
