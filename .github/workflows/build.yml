@@ -34,22 +34,27 @@ jobs:
           set -o pipefail
           make package 2>&1 | tee build.log
 
-      - name: Fix dependency install name in built dylib (-> @executable_path, 与 WeChatX 一致)
-        # 从设备拉回的 CydiaSubstrate 二进制 LINKEDIT 无余量，install_name_tool 无法直接改它。
-        # 故改为在 make package 之后，对我们自己刚编译的 dylib（LINKEDIT 正常）改写其 LC_LOAD_DYLIB，
-        # 把 CydiaSubstrate 依赖指向 @executable_path/Frameworks/...，再重打包。
+      - name: Fix dependency install name in staged dylib (-> @executable_path, 与 WeChatX 一致)
+        # 从设备拉回的 CydiaSubstrate 二进制 LINKEDIT 无余量，install_name_tool 无法直接改它；
+        # 且其 id 是 /usr/local/lib/libellekit.dylib（绝对路径），运行时 loader 找不到 TrollFools 放的 ellekit。
+        # 故 make package 后，对“打进 deb 的 staged dylib”（.theos/_ 下，fat 双架构）改写其 LC_LOAD_DYLIB
+        # 为 @executable_path/Frameworks/CydiaSubstrate.framework/CydiaSubstrate，再用 dpkg-deb 重打包。
         run: |
           set -o pipefail
-          DYLIB=.theos/obj/wechat_swipe_tweak.dylib
-          FW=$(otool -D Frameworks/CydiaSubstrate.framework/CydiaSubstrate | tail -1)
-          echo "framework current install name: $FW"
-          echo "before:"; otool -L "$DYLIB" | grep -i cydiasubstrate || true
-          install_name_tool -change "$FW" @executable_path/Frameworks/CydiaSubstrate.framework/CydiaSubstrate "$DYLIB"
-          ldid -S "$DYLIB"
-          echo "after:"; otool -L "$DYLIB" | grep -i cydiasubstrate || true
-          # 删除旧的暂存/打包结果，保留已改的 .obj，让 theos 仅重打包（不重编译）
-          rm -rf .theos/_ packages/*.deb
-          make package 2>&1 | tee -a build.log
+          {
+            DYLIB=$(find .theos/_ -name 'wechat_swipe_tweak.dylib' | head -1)
+            if [ -z "$DYLIB" ]; then echo "ERROR: staged dylib not found"; find .theos -name '*.dylib' | head; exit 1; fi
+            FW=$(otool -D Frameworks/CydiaSubstrate.framework/CydiaSubstrate | tail -1)
+            echo "framework id: $FW"
+            echo "staged dylib: $DYLIB"
+            echo "before:"; otool -L "$DYLIB" | grep -i cydiasubstrate || true
+            install_name_tool -change "$FW" @executable_path/Frameworks/CydiaSubstrate.framework/CydiaSubstrate "$DYLIB"
+            ldid -S "$DYLIB"
+            echo "after:"; otool -L "$DYLIB" | grep -i cydiasubstrate || true
+            rm -f packages/*.deb
+            dpkg-deb -b .theos/_ "packages/wechat_swipe_tweak.deb"
+            echo "=== deb contents ==="; dpkg-deb -c packages/wechat_swipe_tweak.deb
+          } 2>&1 | tee -a build.log
 
       - name: Upload build log (always, for diagnostics)
         if: always()
