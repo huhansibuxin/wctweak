@@ -27,6 +27,8 @@
 // 仅声明聊天页 VC 的父类层级，使 %hook 块内能使用 UIViewController 的 self 方法
 // （不引入任何微信私有方法签名，符合逆向研究用途）
 @interface BaseMsgContentViewController : UIViewController
+- (void)st_installSwipeGesture;
+- (void)st_leftSwipe:(UISwipeGestureRecognizer *)sw;
 @end
 
 #pragma mark - 前向声明
