@@ -16,8 +16,10 @@
  *
  * 规则遵循：
  *   - ① 不虚构私有类/私有方法：MMMultiMenuTableViewCell / BaseMsgContentViewController
- *       仅以 NSClassFromString 在运行时按名解析，未声明任何私有头；拦截只用公开
- *       gestureRecognizerShouldBegin: 与 UISwipeGestureRecognizer 公开 API。
+ *       仅以 NSClassFromString 在运行时按名解析；为过编译期类型检查，仅声明了
+ *       @interface MMMultiMenuTableViewCell : UITableViewCell（公开继承，不含任何
+ *       私有方法/selector）。拦截只用公开 gestureRecognizerShouldBegin: 与
+ *       UISwipeGestureRecognizer 公开 API。
  *   - 日志写 App 沙盒 Documents/com.boss.swipetweak.log（注入 dylib 的 NSLog 抓不到，故写文件）。
  *
  * 已知局限（如实说明，规则⑧）：
@@ -127,6 +129,13 @@ static void STHandleLeftSwipe(UISwipeGestureRecognizer *g) {
 static const void *kSTLeftSwipeAdded = &kSTLeftSwipeAdded;
 
 #pragma mark - 核心 Hook：MMMultiMenuTableViewCell（所有可侧滑 cell 的基类）
+// 仅为让编译器知道 self 继承自 UIView（从而能调用 addGestureRecognizer: / class 等
+// 公开继承方法），声明其继承链。真实类名与继承关系经公开 class-dump 确认：
+// MMMultiMenuTableViewCell : UITableViewCell。这里不声明任何私有方法或 selector，
+// 不违反规则①（不虚构私有类/私有方法）。
+@interface MMMultiMenuTableViewCell : UITableViewCell
+@end
+
 %hook MMMultiMenuTableViewCell
 
 // 禁用原生侧滑菜单：让 cell 自带的 pan 手势无法开始（聊天页内）
