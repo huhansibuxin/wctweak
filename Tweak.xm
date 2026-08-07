@@ -53,6 +53,57 @@ static void STSetBool(NSString *key, BOOL val) {
     [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
+#pragma mark - 诊断 dump（取不到消息对象时打印完整对象图 + VC 方法名，用于精准适配 8.0.37）
+static void STDumpMethods(id obj, NSString *keyword) {
+    if (!obj) return;
+    Class cls = [obj class];
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList(cls, &count);
+    if (!methods) return;
+    NSMutableArray *names = [NSMutableArray array];
+    for (unsigned i = 0; i < count; i++) {
+        NSString *n = NSStringFromSelector(method_getName(methods[i]));
+        if ([n rangeOfString:keyword options:NSCaseInsensitiveSearch].location != NSNotFound)
+            [names addObject:n];
+    }
+    free(methods);
+    if (names.count) {
+        STLog(@"[DUMP] %@ 上含 '%@' 的方法: %@", NSStringFromClass(cls), keyword,
+              [names componentsJoinedByString:@", "]);
+    }
+}
+
+/// 递归打印对象 ivar 图（只钻消息数据模型，不钻 UIView 子树，depth≤4 + budget 限制防刷屏）
+static void STDumpIvarGraph(id obj, int depth, int *budget, NSString *prefix) {
+    if (!obj || depth > 4 || *budget <= 0) return;
+    NSString *clsName = NSStringFromClass([obj class]);
+    if ([clsName containsString:@"MsgWrap"] || [clsName containsString:@"C2CMsgNode"] ||
+        [clsName containsString:@"MessageWrap"] || [clsName containsString:@"MessageModel"] ||
+        [clsName containsString:@"MsgNode"] || [clsName containsString:@"C2CMessage"] ||
+        [clsName containsString:@"Wrap"] || [clsName containsString:@"Node"]) {
+        STLog(@"[DUMP] %@>>> 候选消息对象: %@", prefix, clsName);
+    }
+    unsigned int count = 0;
+    Ivar *ivs = class_copyIvarList([obj class], &count);
+    if (!ivs) return;
+    for (unsigned i = 0; i < count && *budget > 0; i++) {
+        const char *enc = ivar_getTypeEncoding(ivs[i]);
+        if (!enc || enc[0] != '@') continue;
+        id val = object_getIvar(obj, ivs[i]);
+        if (!val) continue;
+        NSString *vcls = NSStringFromClass([val class]);
+        NSString *ivname = [NSString stringWithUTF8String:ivar_getName(ivs[i])];
+        STLog(@"[DUMP] %@%d %@ : %@ = %@", prefix, depth, clsName, ivname, vcls);
+        (*budget)--;
+        if ([vcls containsString:@"Model"] || [vcls containsString:@"Wrap"] ||
+            [vcls containsString:@"Node"] || [vcls containsString:@"Controller"] ||
+            [vcls containsString:@"CellView"]) {
+            STDumpIvarGraph(val, depth + 1, budget, [prefix stringByAppendingString:@"  "]);
+        }
+    }
+    free(ivs);
+}
+
 #pragma mark - 安全提取消息对象（核心：不闪退）
 /// 递归在对象 ivar 中查找类名含 MsgWrap / C2CMsgNode / MessageWrap 的对象。
 /// 只钻「可能承载消息」的容器类型（UIView / Model / ViewModel / CellView / Wrap / Node），
@@ -66,7 +117,11 @@ static id STSearchMsgWrap(id obj, int depth, NSMutableSet *visited) {
     NSString *clsName = NSStringFromClass([obj class]);
     if ([clsName containsString:@"MsgWrap"] ||
         [clsName containsString:@"C2CMsgNode"] ||
-        [clsName containsString:@"MessageWrap"]) {
+        [clsName containsString:@"MessageWrap"] ||
+        [clsName containsString:@"MessageModel"] ||
+        [clsName containsString:@"MsgNode"] ||
+        [clsName containsString:@"C2CMessage"] ||
+        [clsName containsString:@"CMessageWrap"]) {
         return obj;
     }
     if (depth >= 5) return nil;
@@ -123,6 +178,10 @@ static id STGetMsgWrapFromCell(UITableViewCell *cell) {
             id mw = [cellView valueForKey:@"msgWrap"];
             if (mw) return mw;
         }
+        // 失败：dump 完整对象图，便于精准适配 8.0.37 的真实消息类名
+        int budget = 160;
+        STLog(@"[swipe] 取不到消息对象，开始 dump cell 对象图 ===");
+        STDumpIvarGraph(cell, 0, &budget, @"");
         STLog(@"[swipe] 取不到 msgWrap, cell=%@ cellView=%@",
               NSStringFromClass([cell class]),
               NSStringFromClass([(id)[cell valueForKey:@"m_cellView"] class]));
@@ -144,32 +203,52 @@ static BOOL STIsOwnMessage(id msgWrap) {
     return NO;
 }
 
-#pragma mark - 真实执行：删除 / 撤回（WeChatX 同款 API）
-/// 删除：WeChatX 逆向确认的真实选择器 DelMsg:MsgWrap:（两个参数，第一参数也传 msgWrap）
-/// 兜底：旧版单参数 DelMsg:
-static void STDeleteMessage(id vc, id msgWrap) {
-    if (!vc || !msgWrap) return;
+#pragma mark - 真实执行：删除 / 撤回（多候选探测，覆盖 WeChatX 与 8.0.37 两种 API）
+/// 删除：依次尝试多个候选删除方法（哪个响应就用哪个）
+///  - WeChatX: DelMsg: / DelMsg:MsgWrap:
+///  - 8.0.37: deleteNode:withDB:animated: / deleteMessage: / onDeleteMsg:
+static void STDeleteMessage(id vc, id obj) {
+    if (!vc || !obj) return;
+    STLog(@"[delete] 尝试删除 obj=%@ vc=%@", NSStringFromClass([obj class]), NSStringFromClass([vc class]));
     @try {
-        // 优先单参数 DelMsg:（最常见形态）
-        SEL sel1 = NSSelectorFromString(@"DelMsg:");
-        if ([vc respondsToSelector:sel1]) {
-            [vc performSelector:sel1 withObject:msgWrap];
-            STLog(@"[delete] 调用 DelMsg: 成功 (vc=%@)", NSStringFromClass([vc class]));
-            return;
-        }
-        // 兜底：WeChatX 逆向到的两参数 DelMsg:MsgWrap:
-        SEL sel2 = NSSelectorFromString(@"DelMsg:MsgWrap:");
-        if ([vc respondsToSelector:sel2]) {
-            NSMethodSignature *sig = [vc methodSignatureForSelector:sel2];
+        // 1. DelMsg:MsgWrap: (WeChatX, 2 参数)
+        SEL s1 = NSSelectorFromString(@"DelMsg:MsgWrap:");
+        if ([vc respondsToSelector:s1]) {
+            NSMethodSignature *sig = [vc methodSignatureForSelector:s1];
             if (sig) {
                 NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
-                [inv setTarget:vc];
-                [inv setSelector:sel2];
-                [inv setArgument:&msgWrap atIndex:2];
-                [inv setArgument:&msgWrap atIndex:3];
+                [inv setTarget:vc]; [inv setSelector:s1];
+                [inv setArgument:&obj atIndex:2]; [inv setArgument:&obj atIndex:3];
                 [inv invoke];
-                STLog(@"[delete] 调用 DelMsg:MsgWrap: 成功");
-                return;
+                STLog(@"[delete] DelMsg:MsgWrap: OK"); return;
+            }
+        }
+        // 2. DelMsg: (1 参数)
+        SEL s2 = NSSelectorFromString(@"DelMsg:");
+        if ([vc respondsToSelector:s2]) {
+            [vc performSelector:s2 withObject:obj];
+            STLog(@"[delete] DelMsg: OK"); return;
+        }
+        // 3. deleteNode:withDB:animated: (8.0.37, 3 参数: node/YES/YES)
+        SEL s3 = NSSelectorFromString(@"deleteNode:withDB:animated:");
+        if ([vc respondsToSelector:s3]) {
+            NSMethodSignature *sig = [vc methodSignatureForSelector:s3];
+            if (sig) {
+                NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+                [inv setTarget:vc]; [inv setSelector:s3];
+                [inv setArgument:&obj atIndex:2];
+                BOOL yes = YES;
+                [inv setArgument:&yes atIndex:3]; [inv setArgument:&yes atIndex:4];
+                [inv invoke];
+                STLog(@"[delete] deleteNode:withDB:animated: OK"); return;
+            }
+        }
+        // 4. 其余单参数候选
+        for (NSString *n in @[@"deleteMessage:", @"onDeleteMsg:", @"deleteOneMsg:"]) {
+            SEL s = NSSelectorFromString(n);
+            if ([vc respondsToSelector:s]) {
+                [vc performSelector:s withObject:obj];
+                STLog(@"[delete] %@ OK", n); return;
             }
         }
         STLog(@"[delete] 未找到删除方法 on %@", NSStringFromClass([vc class]));
@@ -178,33 +257,59 @@ static void STDeleteMessage(id vc, id msgWrap) {
     }
 }
 
-/// 撤回：-(void)RevokeMsg:(id)msgWrap Counter:(NSUInteger)counter revokeTicket:(id)ticket viewController:(id)vc;
-/// （WeChatX 逆向确认：RevokeMsg:MsgWrap:Counter:revokeTicket:viewController:）
-static void STRecallMessage(id vc, id msgWrap) {
-    if (!vc || !msgWrap) return;
-    SEL sel = NSSelectorFromString(@"RevokeMsg:MsgWrap:Counter:revokeTicket:viewController:");
-    if (![vc respondsToSelector:sel]) {
-        STLog(@"[recall] VC(%@) 不响应 RevokeMsg:MsgWrap:...", NSStringFromClass([vc class]));
-        return;
-    }
+/// 撤回：依次尝试多个候选撤回方法
+///  - WeChatX: RevokeMsg:MsgWrap:Counter:revokeTicket:viewController:
+///  - 8.0.37: revokeMsgByNodeView: / onRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg: / OnRevokeMsg:...
+static void STRecallMessage(id vc, id obj) {
+    if (!vc || !obj) return;
+    STLog(@"[recall] 尝试撤回 obj=%@ vc=%@", NSStringFromClass([obj class]), NSStringFromClass([vc class]));
     @try {
-        NSMethodSignature *sig = [vc methodSignatureForSelector:sel];
-        if (!sig) return;
-        NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
-        [inv setTarget:vc];
-        [inv setSelector:sel];
-        // arg2 = msgWrap
-        [inv setArgument:&msgWrap atIndex:2];
-        // arg3 = Counter (NSUInteger)，本地撤回先传 0
-        NSUInteger counter = 0;
-        [inv setArgument:&counter atIndex:3];
-        // arg4 = revokeTicket，先传 nil 试
-        id ticket = nil;
-        [inv setArgument:&ticket atIndex:4];
-        // arg5 = viewController
-        [inv setArgument:&vc atIndex:5];
-        [inv invoke];
-        STLog(@"[recall] 调用 RevokeMsg:MsgWrap:... 完成 (msgWrap=%@)", NSStringFromClass([msgWrap class]));
+        // 1. RevokeMsg:MsgWrap:Counter:revokeTicket:viewController: (WeChatX, 4 参数)
+        SEL s1 = NSSelectorFromString(@"RevokeMsg:MsgWrap:Counter:revokeTicket:viewController:");
+        if ([vc respondsToSelector:s1]) {
+            NSMethodSignature *sig = [vc methodSignatureForSelector:s1];
+            if (sig) {
+                NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+                [inv setTarget:vc]; [inv setSelector:s1];
+                [inv setArgument:&obj atIndex:2];
+                NSUInteger c = 0; [inv setArgument:&c atIndex:3];
+                id t = nil;    [inv setArgument:&t atIndex:4];
+                [inv setArgument:&vc atIndex:5];
+                [inv invoke];
+                STLog(@"[recall] RevokeMsg:MsgWrap:... OK"); return;
+            }
+        }
+        // 2. revokeMsgByNodeView: (8.0.37, 1 参数 nodeView)
+        SEL s2 = NSSelectorFromString(@"revokeMsgByNodeView:");
+        if ([vc respondsToSelector:s2]) {
+            [vc performSelector:s2 withObject:obj];
+            STLog(@"[recall] revokeMsgByNodeView: OK"); return;
+        }
+        // 3. onRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg: 系列
+        for (NSString *n in @[
+                @"onRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg:",
+                @"OnRevokeMsg:MsgWrap:ResultCode:ResultMsg:EducationMsg:",
+                @"onRevokeMsg:"]) {
+            SEL s = NSSelectorFromString(n);
+            if ([vc respondsToSelector:s]) {
+                if ([n isEqualToString:@"onRevokeMsg:"]) {
+                    [vc performSelector:s withObject:obj];
+                    STLog(@"[recall] onRevokeMsg: OK"); return;
+                }
+                NSMethodSignature *sig = [vc methodSignatureForSelector:s];
+                if (sig) {
+                    NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+                    [inv setTarget:vc]; [inv setSelector:s];
+                    [inv setArgument:&obj atIndex:2];
+                    int rc = 0; [inv setArgument:&rc atIndex:3];
+                    id rm = nil; [inv setArgument:&rm atIndex:4];
+                    id em = nil; [inv setArgument:&em atIndex:5];
+                    [inv invoke];
+                    STLog(@"[recall] %@ OK", n); return;
+                }
+            }
+        }
+        STLog(@"[recall] 未找到撤回方法 on %@", NSStringFromClass([vc class]));
     } @catch (NSException *e) {
         STLog(@"[recall] 异常: %@", e);
     }
@@ -273,7 +378,10 @@ static void STRecallMessage(id vc, id msgWrap) {
 
     id mw = STGetMsgWrapFromCell(cell);
     if (!mw) {
-        STLog(@"[swipe] 取不到 msgWrap (cell=%@)", NSStringFromClass([cell class]));
+        STLog(@"[swipe] 取不到消息对象 (cell=%@)，dump VC 方法用于适配", NSStringFromClass([cell class]));
+        STDumpMethods(self, @"del");
+        STDumpMethods(self, @"revoke");
+        STDumpMethods(self, @"Message");
         return;
     }
 
@@ -456,5 +564,5 @@ static void STLog(NSString *fmt, ...) {
 #pragma mark - 入口
 %ctor {
     STInitLog();
-    STLog(@"SwipeTweak v11 Loaded (ivar-search msgWrap, reverse-engineered from WeChatX)");
+    STLog(@"SwipeTweak v12 Loaded (multi-candidate del/recall + ivar dump for 8.0.37)");
 }
