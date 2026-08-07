@@ -1,0 +1,10 @@
+# Theos 编译产物
+.theos/
+obj/
+packages/
+*.deb
+*.dylib
+
+# macOS / 系统
+.DS_Store
+*.swp

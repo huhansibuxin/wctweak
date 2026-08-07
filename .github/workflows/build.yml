@@ -1,0 +1,23 @@
+name: Build WeChat Swipe Tweak
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build with Theos
+        uses: rweichler/theos-action@master
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wechat-swipe-tweak-deb
+          path: packages/*.deb
+          if-no-files-found: warn
