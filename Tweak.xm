@@ -225,10 +225,10 @@ static void STRecallMessage(id vc, id msgWrap) {
 
 %end
 
-%subclass STSettingsViewController : UITableViewController
+@implementation STSettingsViewController
 
 - (void)viewDidLoad {
-    %orig;
+    [super viewDidLoad];
     self.title = @"滑动手势";
 }
 
@@ -284,7 +284,7 @@ static void STRecallMessage(id vc, id msgWrap) {
     STSetBool(key, sender.on);
 }
 
-%end
+@end
 
 @implementation UIViewController (SwipeTweak)
 
