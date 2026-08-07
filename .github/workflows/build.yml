@@ -12,8 +12,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build with Theos
-        uses: rweichler/theos-action@master
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git fakeroot dpkg-dev unzip curl
+
+      - name: Setup Theos
+        run: |
+          git clone --recursive https://github.com/theos/theos.git $HOME/theos
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+
+      - name: Download iOS SDK
+        run: |
+          curl -sL https://github.com/theos/sdks/archive/refs/heads/master.zip -o /tmp/sdks.zip
+          mkdir -p $HOME/theos/sdks
+          cd /tmp && unzip -q -o sdks.zip
+          # 复制所有 .sdk 到 theos/sdks
+          cp -r /tmp/sdks-master/*.sdk $HOME/theos/sdks/ 2>/dev/null || true
+          ls $HOME/theos/sdks/ | head
+
+      - name: Build package
+        env:
+          THEOS: ${{ env.THEOS }}
+        run: |
+          make package FINALPACKAGE=1
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4

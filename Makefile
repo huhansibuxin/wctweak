@@ -8,7 +8,6 @@ TWEAK_NAME = wechat_swipe_tweak
 wechat_swipe_tweak_FILES = Tweak.xm
 wechat_swipe_tweak_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 wechat_swipe_tweak_FRAMEWORKS = UIKit Foundation
-wechat_swipe_tweak_PRIVATE_FRAMEWORKS = UICore
 wechat_swipe_tweak_INSTALL_PATH = /Library/MobileSubstrate/DynamicLibraries
 
 include $(THEOS_MAKE_PATH)/tweak.mk
