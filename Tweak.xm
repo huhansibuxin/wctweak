@@ -1,4 +1,4 @@
-/* Tweak.xm v10 —— 微信消息左滑手势（rootless / ElleKit）
+/* Tweak.xm v14 —— 微信消息左滑手势（rootless / ElleKit）
  *
  * v10 重大修复（基于 WeChatX-1.dylib 逆向结论）：
  *   v9 用的 iOS 原生 UISwipeActionsConfiguration 在微信 8.0.37 聊天页根本
@@ -73,118 +73,161 @@ static void STDumpMethods(id obj, NSString *keyword) {
     }
 }
 
-/// 递归打印对象 ivar 图（只钻消息数据模型，不钻 UIView 子树，depth≤4 + budget 限制防刷屏）
-static void STDumpIvarGraph(id obj, int depth, int *budget, NSString *prefix) {
-    if (!obj || depth > 4 || *budget <= 0) return;
-    NSString *clsName = NSStringFromClass([obj class]);
-    if ([clsName containsString:@"MsgWrap"] || [clsName containsString:@"C2CMsgNode"] ||
-        [clsName containsString:@"MessageWrap"] || [clsName containsString:@"MessageModel"] ||
-        [clsName containsString:@"MsgNode"] || [clsName containsString:@"C2CMessage"] ||
-        [clsName containsString:@"Wrap"] || [clsName containsString:@"Node"]) {
-        STLog(@"[DUMP] %@>>> 候选消息对象: %@", prefix, clsName);
+#pragma mark - 全量 dump（v14：含 superclass ivar + property，不过滤，用于精准定位 8.0.37 消息对象字段）
+/// 收集 obj 自身及所有父类（直到 stopCls）的 ivar（name : valueClass）
+static NSMutableArray<NSString *> *STAllIvarDescs(id obj, Class stopCls) {
+    NSMutableArray *arr = [NSMutableArray array];
+    Class cls = [obj class];
+    while (cls && cls != stopCls && cls != [NSObject class]) {
+        unsigned int c = 0;
+        Ivar *ivs = class_copyIvarList(cls, &c);
+        for (unsigned i = 0; i < c; i++) {
+            id val = object_getIvar(obj, ivs[i]);
+            NSString *vcls = val ? NSStringFromClass([val class]) : @"<nil>";
+            NSString *ivn = [NSString stringWithUTF8String:ivar_getName(ivs[i])];
+            [arr addObject:[NSString stringWithFormat:@"  [%@] %@ : %@",
+                           NSStringFromClass(cls), ivn, vcls]];
+        }
+        free(ivs);
+        cls = class_getSuperclass(cls);
     }
-    unsigned int count = 0;
-    Ivar *ivs = class_copyIvarList([obj class], &count);
-    if (!ivs) return;
-    for (unsigned i = 0; i < count && *budget > 0; i++) {
-        const char *enc = ivar_getTypeEncoding(ivs[i]);
-        if (!enc || enc[0] != '@') continue;
-        id val = object_getIvar(obj, ivs[i]);
-        if (!val) continue;
-        NSString *vcls = NSStringFromClass([val class]);
-        NSString *ivname = [NSString stringWithUTF8String:ivar_getName(ivs[i])];
-        STLog(@"[DUMP] %@%d %@ : %@ = %@", prefix, depth, clsName, ivname, vcls);
-        (*budget)--;
-        if ([vcls containsString:@"Model"] || [vcls containsString:@"Wrap"] ||
-            [vcls containsString:@"Node"] || [vcls containsString:@"Controller"] ||
-            [vcls containsString:@"CellView"]) {
-            STDumpIvarGraph(val, depth + 1, budget, [prefix stringByAppendingString:@"  "]);
+    return arr;
+}
+
+/// 收集 obj 自身及所有父类的 @property（name : type）
+static NSMutableArray<NSString *> *STAllPropertyDescs(id obj) {
+    NSMutableArray *arr = [NSMutableArray array];
+    Class cls = [obj class];
+    while (cls && cls != [NSObject class]) {
+        unsigned int c = 0;
+        objc_property_t *ps = class_copyPropertyList(cls, &c);
+        for (unsigned i = 0; i < c; i++) {
+            const char *name = property_getName(ps[i]);
+            const char *attr = property_getAttributes(ps[i]);
+            NSString *attrs = [NSString stringWithUTF8String:attr ?: ""];
+            NSString *typ = @"?";
+            NSRange r = [attrs rangeOfString:@"T@\""];
+            if (r.location != NSNotFound) {
+                NSUInteger s = r.location + 3;
+                NSRange end = [attrs rangeOfString:@"\"," options:0 range:NSMakeRange(s, attrs.length - s)];
+                if (end.location != NSNotFound)
+                    typ = [attrs substringWithRange:NSMakeRange(s, end.location - s)];
+            }
+            NSString *pn = [NSString stringWithUTF8String:name ?: ""];
+            [arr addObject:[NSString stringWithFormat:@"  [%@] @property %@ : %@",
+                           NSStringFromClass(cls), pn, typ]];
+        }
+        free(ps);
+        cls = class_getSuperclass(cls);
+    }
+    return arr;
+}
+
+static void STDumpAll(id cell, id cellView) {
+    STLog(@"[DUMP-ALL] ===== ChatTableViewCell ivars（含父类） =====");
+    for (NSString *s in STAllIvarDescs(cell, [UITableViewCell class])) STLog(@"[DUMP-ALL] %@", s);
+    STLog(@"[DUMP-ALL] ===== ChatTableViewCell properties =====");
+    for (NSString *s in STAllPropertyDescs(cell)) STLog(@"[DUMP-ALL] %@", s);
+    if (cellView) {
+        STLog(@"[DUMP-ALL] ===== cellView(%@) ivars（含父类） =====", NSStringFromClass([cellView class]));
+        for (NSString *s in STAllIvarDescs(cellView, [UIView class])) STLog(@"[DUMP-ALL] %@", s);
+        STLog(@"[DUMP-ALL] ===== cellView(%@) properties =====", NSStringFromClass([cellView class]));
+        for (NSString *s in STAllPropertyDescs(cellView)) STLog(@"[DUMP-ALL] %@", s);
+        for (NSString *kw in @[@"node", @"msg", @"wrap", @"message", @"viewModel", @"data", @"model", @"content"]) {
+            STDumpMethods(cellView, kw);
         }
     }
-    free(ivs);
+    for (NSString *kw in @[@"node", @"msg", @"wrap", @"message", @"viewModel", @"data", @"model", @"content"]) {
+        STDumpMethods(cell, kw);
+    }
 }
 
 #pragma mark - 安全提取消息对象（核心：不闪退）
-/// 递归在对象 ivar 中查找类名含 MsgWrap / C2CMsgNode / MessageWrap 的对象。
-/// 只钻「可能承载消息」的容器类型（UIView / Model / ViewModel / CellView / Wrap / Node），
-/// 用 visited 防环 + depth 限制防卡死。按类名匹配，彻底摆脱硬编码字段名。
+/// 判定一个类是否为微信消息数据对象（node / wrap / model 等）
+static BOOL STClassIsMsgWrap(Class cls) {
+    if (!cls) return NO;
+    NSString *n = NSStringFromClass(cls);
+    NSArray *pats = @[@"MsgWrap", @"C2CMsgNode", @"MessageWrap", @"MessageModel", @"MsgNode",
+                      @"C2CMessage", @"CMessageWrap", @"MessageNode", @"WCMessage", @"MMMessage",
+                      @"CMessage", @"BaseMsgNode"];
+    for (NSString *p in pats) if ([n containsString:p]) return YES;
+    return NO;
+}
+
+/// 递归在对象（含父类） ivar 中查找类名含消息特征的对象。
 static id STSearchMsgWrap(id obj, int depth, NSMutableSet *visited) {
-    if (!obj || depth > 5) return nil;
+    if (!obj || depth > 6) return nil;
     NSValue *key = [NSValue valueWithPointer:(__bridge void *)obj];
     if ([visited containsObject:key]) return nil;
     [visited addObject:key];
 
-    NSString *clsName = NSStringFromClass([obj class]);
-    if ([clsName containsString:@"MsgWrap"] ||
-        [clsName containsString:@"C2CMsgNode"] ||
-        [clsName containsString:@"MessageWrap"] ||
-        [clsName containsString:@"MessageModel"] ||
-        [clsName containsString:@"MsgNode"] ||
-        [clsName containsString:@"C2CMessage"] ||
-        [clsName containsString:@"CMessageWrap"]) {
-        return obj;
-    }
-    if (depth >= 5) return nil;
+    if (STClassIsMsgWrap([obj class])) return obj;
+    if (depth >= 6) return nil;
 
     Class cls = [obj class];
-    unsigned int count = 0;
-    Ivar *ivs = class_copyIvarList(cls, &count);
-    if (!ivs) return nil;
-    id result = nil;
-    for (unsigned i = 0; i < count; i++) {
-        const char *enc = ivar_getTypeEncoding(ivs[i]);
-        if (!enc || enc[0] != '@') continue;           // 仅处理对象类型 ivar
-        id val = object_getIvar(obj, ivs[i]);
-        if (!val) continue;
-        NSString *vcls = NSStringFromClass([val class]);
-        // 只在可能承载消息的容器类型里继续钻
-        if ([val isKindOfClass:[UIView class]] ||
-            [vcls containsString:@"Model"] ||
-            [vcls containsString:@"View"]  ||
-            [vcls containsString:@"Wrap"]  ||
-            [vcls containsString:@"Node"]) {
-            result = STSearchMsgWrap(val, depth + 1, visited);
-            if (result) break;
+    while (cls && cls != [NSObject class]) {
+        unsigned int count = 0;
+        Ivar *ivs = class_copyIvarList(cls, &count);
+        for (unsigned i = 0; i < count; i++) {
+            const char *enc = ivar_getTypeEncoding(ivs[i]);
+            if (!enc || enc[0] != '@') continue;           // 仅处理对象类型 ivar
+            id val = object_getIvar(obj, ivs[i]);
+            if (!val) continue;
+            NSString *vcls = NSStringFromClass([val class]);
+            // 只在可能承载消息的容器类型里继续钻
+            if ([val isKindOfClass:[UIView class]] ||
+                [vcls containsString:@"Model"] || [vcls containsString:@"View"]  ||
+                [vcls containsString:@"Wrap"]  || [vcls containsString:@"Node"]  ||
+                [vcls containsString:@"Controller"]) {
+                id r = STSearchMsgWrap(val, depth + 1, visited);
+                if (r) { free(ivs); return r; }
+            }
         }
+        free(ivs);
+        cls = class_getSuperclass(cls);
     }
-    free(ivs);
-    return result;
+    return nil;
 }
 
-/// 从 cell 钻取 MsgWrap：优先 ivar 递归搜索（按类名匹配，最稳），
-/// 失败再试已知 getter（getMsgWrap / msgWrap / m_cellView.viewModel...）兜底。
+/// 从 cell 钻取消息数据对象：ivar 递归搜索（含父类）→ 候选 getter → 全量 dump
 static id STGetMsgWrapFromCell(UITableViewCell *cell) {
     if (!cell) return nil;
     @try {
         NSMutableSet *visited = [NSMutableSet set];
         id found = STSearchMsgWrap(cell, 0, visited);
         if (found) {
-            STLog(@"[swipe] 命中 msgWrap=%@ (by ivar search)", NSStringFromClass([found class]));
+            STLog(@"[swipe] 命中消息对象=%@ (ivar 搜索)", NSStringFromClass([found class]));
             return found;
         }
-        // 兜底：显式试已知 getter 路径
+
+        // 候选 getter（cell 与 cellView 都试）
         id cellView = [cell valueForKey:@"m_cellView"];
-        if (cellView) {
-            id vm = [cellView valueForKey:@"viewModel"];
-            if (vm) {
-                id mw = [vm valueForKey:@"msgWrap"];
-                if (mw) return mw;
-                SEL gs = NSSelectorFromString(@"getMsgWrap");
-                if ([vm respondsToSelector:gs]) {
-                    id mw2 = [vm performSelector:gs];
-                    if (mw2) return mw2;
-                }
+        NSArray *cand = @[@"m_msgWrap", @"msgWrap", @"m_node", @"node", @"m_messageNode", @"messageNode",
+                          @"viewModel", @"m_viewModel", @"m_msg", @"m_messageWrap", @"messageWrap",
+                          @"m_data", @"data", @"m_message", @"m_content", @"content", @"m_cellData",
+                          @"cellData", @"m_msgNode", @"msgNode", @"m_model", @"model", @"m_MsgWrap"];
+        for (NSString *k in cand) {
+            id v = nil;
+            @try { v = [cell valueForKey:k]; } @catch (NSException *e) {}
+            if (v && STClassIsMsgWrap([v class])) {
+                STLog(@"[swipe] 命中消息对象=%@ via cell.%@", NSStringFromClass([v class]), k);
+                return v;
             }
-            id mw = [cellView valueForKey:@"msgWrap"];
-            if (mw) return mw;
         }
-        // 失败：dump 完整对象图，便于精准适配 8.0.37 的真实消息类名
-        int budget = 160;
-        STLog(@"[swipe] 取不到消息对象，开始 dump cell 对象图 ===");
-        STDumpIvarGraph(cell, 0, &budget, @"");
-        STLog(@"[swipe] 取不到 msgWrap, cell=%@ cellView=%@",
-              NSStringFromClass([cell class]),
-              NSStringFromClass([(id)[cell valueForKey:@"m_cellView"] class]));
+        for (NSString *k in cand) {
+            id v = nil;
+            @try { v = [cellView valueForKey:k]; } @catch (NSException *e) {}
+            if (v && STClassIsMsgWrap([v class])) {
+                STLog(@"[swipe] 命中消息对象=%@ via cellView.%@", NSStringFromClass([v class]), k);
+                return v;
+            }
+        }
+
+        // 失败：全量 dump 精准定位真实字段名
+        STLog(@"[swipe] 取不到消息对象，开始全量 dump ===");
+        STDumpAll(cell, cellView);
+        STLog(@"[swipe] 取不到消息对象 cell=%@ cellView=%@",
+              NSStringFromClass([cell class]), NSStringFromClass([cellView class]));
         return nil;
     } @catch (NSException *e) {
         return nil;
@@ -576,5 +619,5 @@ static void STLog(NSString *fmt, ...) {
 #pragma mark - 入口
 %ctor {
     STInitLog();
-    STLog(@"SwipeTweak v13 Loaded (linked CydiaSubstrate/ellekit like WeChatX, so TrollFools loads it)");
+    STLog(@"SwipeTweak v14 Loaded (linked CydiaSubstrate/ellekit like WeChatX, so TrollFools loads it)");
 }
