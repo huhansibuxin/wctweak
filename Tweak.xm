@@ -40,6 +40,7 @@ static void STLog(NSString *fmt, ...);  // 日志函数（定义在文件末尾�
 @end
 
 @interface ChatTableViewCell : UITableViewCell
+- (void)st_neutralizeNativeSwipe;
 @end
 
 #pragma mark - 配置键（NSUserDefaults）
