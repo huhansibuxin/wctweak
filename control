@@ -2,9 +2,8 @@ Package: com.boss.wechatswipetweak
 Name: WeChat Swipe Tweak
 Version: 1.0.0
 Architecture: iphoneos-arm64
-Description: 微信滑动手势独立增强：禁用右滑 + 左滑自定义动作。不依赖 WCRefine 内部配置。
-Maintainer: Boss <boss@local>
-Author: 小弟
+Description: Disable right-swipe and customize left-swipe in WeChat (rootless, ElleKit).
+Maintainer: boss
+Author: boss
 Section: Tweaks
-Depends: mobilesubstrate (>= 0.9.10)
-Conflicts: com.boss.wechatswipetweak-legacy
+Depends: ellekit

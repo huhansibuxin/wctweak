@@ -1,31 +1,39 @@
-name: Build WeChat Swipe Tweak
+name: Build wechat_swipe_tweak
 
 on:
   push:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Theos (recursive, 含 logos/headers/lib 等 vendor 子模块)
+      - name: Setup Theos
         run: |
-          git clone --recursive https://github.com/theos/theos.git $HOME/theos
-          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+          git clone --recurse-submodules https://github.com/theos/theos.git ${{ runner.temp }}/theos
+          find ${{ runner.temp }}/theos/bin -name "*.pl" -exec sed -i '' '1s|#!/usr/bin/perl|#!/usr/bin/env perl|' {} \;
+          echo "THEOS=${{ runner.temp }}/theos" >> $GITHUB_ENV
+          echo "THEOS_PACKAGE_SCHEME=rootless" >> $GITHUB_ENV
 
-      - name: Build package (macOS 用 Xcode 自带 clang + iOS SDK，无需单独工具链)
-        env:
-          THEOS: ${{ env.THEOS }}
+      - name: Install dependencies
+        run: brew install dpkg ldid
+
+      - name: Install SDK
         run: |
-          make package FINALPACKAGE=1
+          cd ${{ runner.temp }}/theos/sdks
+          curl -sLO https://github.com/theos/sdks/archive/refs/heads/master.zip
+          unzip -q master.zip
+          mv sdks-master/iPhoneOS16.5.sdk .
+          rm -rf sdks-master master.zip
 
-      - name: Upload .deb artifact
+      - name: Build
+        run: make package
+
+      - name: Upload deb
         uses: actions/upload-artifact@v4
         with:
-          name: wechat-swipe-tweak-deb
+          name: wechat_swipe_tweak-rootless
           path: packages/*.deb
-          if-no-files-found: warn
