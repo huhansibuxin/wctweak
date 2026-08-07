@@ -27,6 +27,11 @@
 @interface STSettingsViewController : UITableViewController
 @end
 
+// C 函数前向声明（函数定义在文件更下方）
+static void STExecuteSwipeAction(UIView *cell);
+static void STShowFallbackAlert(UIViewController *vc, NSString *action, id msgObj);
+static void STDumpViewRec(UIView *v, int depth, int maxDepth);
+
 #pragma mark - 配置键（NSUserDefaults）
 static NSString *kEnabled = @"com.boss.swipetweak.enabled";  // 总开关
 
