@@ -44,11 +44,17 @@ jobs:
           {
             DYLIB=$(find .theos/_ -name 'wechat_swipe_tweak.dylib' | head -1)
             if [ -z "$DYLIB" ]; then echo "ERROR: staged dylib not found"; find .theos -name '*.dylib' | head; exit 1; fi
-            FW=$(otool -D Frameworks/CydiaSubstrate.framework/CydiaSubstrate | tail -1)
-            echo "framework id: $FW"
+            # 直接从 dylib 自身依赖里取 CydiaSubstrate 当前 install name（可能是 @rpath/... 或绝对路径），
+            # 不要取 framework 的 id（二者可能不一致，导致 -change 空操作）。
+            CUR=$(otool -L "$DYLIB" | grep -i 'CydiaSubstrate.framework/CydiaSubstrate' | awk '{print $1}' | head -1)
             echo "staged dylib: $DYLIB"
+            echo "current CydiaSubstrate dep: $CUR"
             echo "before:"; otool -L "$DYLIB" | grep -i cydiasubstrate || true
-            install_name_tool -change "$FW" @executable_path/Frameworks/CydiaSubstrate.framework/CydiaSubstrate "$DYLIB"
+            if [ -n "$CUR" ]; then
+              install_name_tool -change "$CUR" @executable_path/Frameworks/CydiaSubstrate.framework/CydiaSubstrate "$DYLIB"
+            else
+              echo "WARN: dylib 中未发现 CydiaSubstrate 依赖！"
+            fi
             ldid -S "$DYLIB"
             echo "after:"; otool -L "$DYLIB" | grep -i cydiasubstrate || true
             rm -f packages/*.deb
