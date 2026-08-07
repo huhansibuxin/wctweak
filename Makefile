@@ -15,7 +15,11 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = wechat_swipe_tweak
 
 wechat_swipe_tweak_FILES = Tweak.xm
-wechat_swipe_tweak_CFLAGS = -fobjc-arc -w
+wechat_swipe_tweak_CFLAGS = -fobjc-arc -w -F$(THEOS_PROJECT_DIR)/Frameworks
+# 关键：本设备 TrollFools 只加载“链接了 substrate”的 tweak。
+# 仿 WeChatX，链接设备自带的 CydiaSubstrate(=ellekit)，让 dylib 真正被加载。
+# 框架 install name 已在 CI 用 install_name_tool 改为 @executable_path/Frameworks/...
+wechat_swipe_tweak_LDFLAGS = -F$(THEOS_PROJECT_DIR)/Frameworks -framework CydiaSubstrate
 wechat_swipe_tweak_FRAMEWORKS = UIKit
 
 include $(THEOS_MAKE_PATH)/tweak.mk

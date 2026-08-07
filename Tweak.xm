@@ -529,18 +529,30 @@ static NSLock       *g_logLock   = nil;
 
 static void STInitLog(void) {
     @autoreleasepool {
+        // 主路径：App 沙盒 Documents（v5 起要求）
         NSArray<NSString *> *paths =
             NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-        if (paths.count == 0) return;
-        NSString *dir = paths[0];
-        NSString *logPath = [dir stringByAppendingPathComponent:@"com.boss.swipetweak.log"];
-        NSFileManager *fm = [NSFileManager defaultManager];
-        if (![fm fileExistsAtPath:logPath]) {
-            [fm createFileAtPath:logPath contents:[NSData data] attributes:nil];
+        NSString *logPath = nil;
+        if (paths.count > 0) {
+            logPath = [paths[0] stringByAppendingPathComponent:@"com.boss.swipetweak.log"];
         }
-        g_logHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
+        // 兜底路径：jailbreak 下 tweak 通常可写 /var/mobile（绕过沙盒，便于 SSH 确认加载）
+        NSString *fallback = @"/var/mobile/com.boss.swipetweak.log";
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSString *chosen = nil;
+        for (NSString *p in @[logPath, fallback]) {
+            if (!p) continue;
+            @try {
+                if (![fm fileExistsAtPath:p]) {
+                    [fm createFileAtPath:p contents:[NSData data] attributes:nil];
+                }
+                NSFileHandle *h = [NSFileHandle fileHandleForWritingAtPath:p];
+                if (h) { chosen = p; g_logHandle = h; break; }
+            } @catch (NSException *e) {}
+        }
         [g_logHandle seekToEndOfFile];
         g_logLock = [[NSLock alloc] init];
+        if (chosen) STLog(@"[log] 日志路径: %@", chosen);
     }
 }
 
@@ -564,5 +576,5 @@ static void STLog(NSString *fmt, ...) {
 #pragma mark - 入口
 %ctor {
     STInitLog();
-    STLog(@"SwipeTweak v12 Loaded (multi-candidate del/recall + ivar dump for 8.0.37)");
+    STLog(@"SwipeTweak v13 Loaded (linked CydiaSubstrate/ellekit like WeChatX, so TrollFools loads it)");
 }

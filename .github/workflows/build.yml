@@ -29,6 +29,12 @@ jobs:
           mv sdks-master/iPhoneOS16.5.sdk .
           rm -rf sdks-master master.zip
 
+      - name: Fix CydiaSubstrate install name (-> @executable_path, 与 WeChatX 一致)
+        run: |
+          install_name_tool -id @executable_path/Frameworks/CydiaSubstrate.framework/CydiaSubstrate \
+            Frameworks/CydiaSubstrate.framework/CydiaSubstrate
+          echo "install name now:"; otool -D Frameworks/CydiaSubstrate.framework/CydiaSubstrate | tail -1
+
       - name: Build
         run: |
           set -o pipefail
